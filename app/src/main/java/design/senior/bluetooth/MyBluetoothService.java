@@ -15,12 +15,21 @@ public class MyBluetoothService {
 
     private ConnectedThread connectedThread;
 
-    public MyBluetoothService(Handler handler, BluetoothSocket socket){
+    public MyBluetoothService(Handler handler, BluetoothSocket socket, boolean server){
         this.mHandler = handler;
         connectedThread = new ConnectedThread(socket);
-        connectedThread.run();
+
+        /**
+         * Server keeps connection open, constantly waiting for data to read
+         */
+        if(server)
+            connectedThread.run();
     }
 
+    /**
+     * Client does writing, so myPhone
+     * @param bytes
+     */
     public void write(byte[] bytes){
         connectedThread.write(bytes);
     }

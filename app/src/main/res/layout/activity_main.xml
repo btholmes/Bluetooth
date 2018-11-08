@@ -18,9 +18,22 @@
             android:id="@+id/searchingText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:textStyle="bold"
             android:textColor="@{data.newSearch == true ? @color/red : @color/black}"
-            android:text="Searching..."
+            android:text="@{data.searchingText}"
             android:layout_centerInParent="true"
+            />
+
+        <TextView
+            android:layout_below="@+id/searchingText"
+            android:layout_centerInParent="true"
+            android:textSize="20sp"
+            android:textStyle="normal"
+            android:layout_width="wrap_content"
+            android:layout_margin="10dp"
+            android:layout_height="wrap_content"
+            android:text="@{data.bluetoothMessage ?? data.defaultMessage}"
             />
 
         <LinearLayout

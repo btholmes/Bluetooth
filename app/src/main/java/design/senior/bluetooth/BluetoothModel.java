@@ -5,6 +5,11 @@ import android.databinding.Bindable;
 
 public class BluetoothModel extends BaseObservable {
 
+    private String bluetoothMessage;
+    private String defaultMessage = "Bluetooth Message";
+
+    private String searchingText;
+
     private BluetoothDevice phone1;
     private BluetoothDevice phone2;
     private int rSSI1;
@@ -14,6 +19,7 @@ public class BluetoothModel extends BaseObservable {
     private int phone1Distance;
 
     public BluetoothModel(){
+        bluetoothMessage = null;
         newSearch = false;
         rSSI1 = 0;
         rSSI2 = 0;
@@ -67,6 +73,31 @@ public class BluetoothModel extends BaseObservable {
         else
             this.newSearch = true;
         notifyPropertyChanged(BR.newSearch);
+    }
+
+    public void setSearchingText(String text){
+        this.searchingText = text;
+        notifyPropertyChanged(BR.searchingText);
+    }
+
+    public void setBluetoothMessage(String message){
+        this.bluetoothMessage = message;
+        notifyPropertyChanged(BR.bluetoothMessage);
+    }
+
+    @Bindable
+    public String getSearchingText(){
+        return this.searchingText;
+    }
+
+    @Bindable
+    public String getBluetoothMessage(){
+        return this.bluetoothMessage;
+    }
+
+    @Bindable
+    public String getDefaultMessage(){
+        return this.defaultMessage;
     }
 
     @Bindable

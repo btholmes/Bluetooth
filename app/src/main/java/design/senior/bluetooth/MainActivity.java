@@ -67,6 +67,14 @@ public class MainActivity extends AppCompatActivity {
 
     private BluetoothModel bluetoothModel;
 
+
+    /**
+     * Boolean used to determine if device will be client (myPhone) or
+     * server side of Bluetooth socket connections (Phone1 Phone2)
+     */
+    private Handler mainHandler;
+    private boolean isTrackingPhone = false;
+    private Timer timer;
     private TextView searchingText;
 
     // Create a BroadcastReceiver for ACTION_FOUND.
@@ -89,8 +97,10 @@ public class MainActivity extends AppCompatActivity {
                         int  rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
 
                         if(deviceName.equalsIgnoreCase("Phone1") ){
+                            timer.cancel();
                             phone1Found = true;
                             bluetoothModel.setPhone1(deviceHardwareAddress, deviceName, rssi);
+                            connectToDevice(device);
                         }else{
                             bluetoothModel.setPhone2(deviceHardwareAddress, deviceName, rssi);
                         }
@@ -104,6 +114,8 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
+
+
 
     private final BroadcastReceiver advertisingReceiver = new BroadcastReceiver() {
         @Override
@@ -119,34 +131,13 @@ public class MainActivity extends AppCompatActivity {
     };
 
 
-    Handler mHandler = new Handler(Looper.getMainLooper()){
-        @Override
-        public void handleMessage(Message msg) {
-            switch (msg.what){
-                //read
-                case 0:
-                    byte[] array = (byte[]) msg.obj;
-                    String s = new String(array);
-                    Toast.makeText(ctx, "Message received " + s , Toast.LENGTH_LONG);
-                    break;
-                //write
-                case 1:
-                    byte[] array2 = (byte[]) msg.obj;
-                    break;
-                //toast
-                case 2:
-                    break;
-
-            }
-        }
-    };
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         this.ctx = this;
         this.bluetoothModel = new BluetoothModel();
+        mainHandler = new Handler(Looper.getMainLooper());
 
         ActivityMainBinding mainBinding = DataBindingUtil.setContentView(this, R.layout.activity_main);
         mainBinding.setLifecycleOwner(this);
@@ -174,6 +165,7 @@ public class MainActivity extends AppCompatActivity {
         String deviceID = Settings.Secure.getString(getApplicationContext().getContentResolver(),
                 Settings.Secure.ANDROID_ID);
 
+
         /**
          * This is my phone, AKA the phone which will be walking a path
          *
@@ -184,12 +176,28 @@ public class MainActivity extends AppCompatActivity {
          * c9be7d62dab9040 = Phone2
          */
         if(deviceID.equals("f94ff5d54dcb186b")){
+            isTrackingPhone = true;
+            bluetoothModel.setSearchingText("I'm a client, Searching...");
             setThisIsMe();
         }else if(deviceID.equals("9f30a05d0a75ed28") || deviceID.equals("c9be7d62dab9040")){
+            isTrackingPhone = false;
+            bluetoothModel.setSearchingText("Server");
             setPhone1And2();
+
+            Handler handler = new Handler();
+            handler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    /**
+                     * This is a blocking thread, so wait for Page UI to load before starting it.
+                     */
+                    startAcceptThread();
+                }
+            }, 2000);
 
         }
     }
+
 
     /**
      * Basic functionality to enable Bluetooth Discvoery and Discoverability on phone
@@ -223,22 +231,32 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(mReceiver, filter);
         bluetoothAdapter.startDiscovery();
 
-        Timer timer = new Timer();
-        timer.schedule(new TimerTask() {
+        startTimer();
+
+    }
+
+    private void startTimer(){
+        timer = new Timer();
+        mainHandler.post(new Runnable() {
             @Override
             public void run() {
-                if(run){
-                    if(!phone1Found){
-                        bluetoothModel.setPhone1Distance(-1);
+                timer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        if(run){
+                            if(!phone1Found){
+                                bluetoothModel.setPhone1Distance(-1);
+                            }
+                            phone1Found = false;
+                            bluetoothModel.setNewSearch();
+                            bluetoothAdapter.startDiscovery();
+                            run = false;
+                        }else
+                            run = true;
                     }
-                    phone1Found = false;
-                    bluetoothModel.setNewSearch();
-                    bluetoothAdapter.startDiscovery();
-                    run = false;
-                }else
-                    run = true;
+                }, 0, 3000);
             }
-        }, 0, 10000);
+        });
     }
 
     private void setPhone1And2(){
@@ -343,7 +361,7 @@ public class MainActivity extends AppCompatActivity {
     private void discoverBluetoothDevices(){
 //        startAcceptThread();
 //        bluetoothAdapter.startDiscovery();
-        setThisIsMe();
+//        setThisIsMe();
     }
 
 
@@ -356,13 +374,13 @@ public class MainActivity extends AppCompatActivity {
      *
      * @param device
      */
-//    private void connectToDevice(BluetoothDevice device){
-//        new ConnectThread(device).run();
-//    }
-//
-//    private void startAcceptThread(){
-//        new AcceptThread().run();
-//    }
+    private void connectToDevice(BluetoothDevice device){
+        new ConnectThread(device).run();
+    }
+
+    private void startAcceptThread(){
+        new AcceptThread().run();
+    }
 
     /**
      *
@@ -418,123 +436,163 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    /**
+     * Accept thread for bluetooth server (Phone1 Phone2)
+     */
+    private class AcceptThread extends Thread {
+        private final BluetoothServerSocket mmServerSocket;
 
-//    private class AcceptThread extends Thread {
-//        private final BluetoothServerSocket mmServerSocket;
-//
-//        public AcceptThread() {
-//            // Use a temporary object that is later assigned to mmServerSocket
-//            // because mmServerSocket is final.
-//            BluetoothServerSocket tmp = null;
-//            try {
-//                // MY_UUID is the app's UUID string, also used by the client code.
-//                tmp = bluetoothAdapter.listenUsingRfcommWithServiceRecord("Name", SERVICE_ID);
-//            } catch (IOException e) {
-//                Log.e("Accept socket exception", "Socket's listen() method failed", e);
-//            }
-//            mmServerSocket = tmp;
-//        }
-//
-//        public void run() {
-//            BluetoothSocket socket = null;
-//            // Keep listening until exception occurs or a socket is returned.
-//            while (true) {
-//                try {
-//                    socket = mmServerSocket.accept();
-//                } catch (IOException e) {
-//                    Log.e("Accept", "Socket's accept() method failed", e);
-//                    break;
-//                }
-//
-//                if (socket != null) {
-//                    // A connection was accepted. Perform work associated with
-//                    // the connection in a separate thread.
-//                    manageMyConnectedSocket(socket);
-//                    try{
-//                        mmServerSocket.close();
-//                    }catch (Exception e){
-//                        e.printStackTrace();
-//                    }
-//
-//                    break;
-//                }
-//            }
-//        }
-//
-//        // Closes the connect socket and causes the thread to finish.
-//        public void cancel() {
-//            try {
-//                mmServerSocket.close();
-//            } catch (IOException e) {
-//                Log.e("Accept is canceled", "Could not close the connect socket", e);
-//            }
-//        }
-//    }
-//
-//
-//    /**
-//     * Connect thread, is used by all devices except ThisIsMe
-//     */
-//    private class ConnectThread extends Thread {
-//        private final BluetoothSocket mmSocket;
-//        private final BluetoothDevice mmDevice;
-//
-//        public ConnectThread(BluetoothDevice device) {
-//            // Use a temporary object that is later assigned to mmSocket
-//            // because mmSocket is final.
-//            BluetoothSocket tmp = null;
-//            mmDevice = device;
-//
-//            try {
-//                // Get a BluetoothSocket to connect with the given BluetoothDevice.
-//                // MY_UUID is the app's UUID string, also used in the server code.
-//                tmp = device.createRfcommSocketToServiceRecord(SERVICE_ID);
-//            } catch (IOException e) {
-////                Log.e(TAG, "Socket's create() method failed", e);
-//            }
-//            mmSocket = tmp;
-//        }
-//
-//        public void run() {
-//            // Cancel discovery because it otherwise slows down the connection.
-//            bluetoothAdapter.cancelDiscovery();
-//
-//            try {
-//                // Connect to the remote device through the socket. This call blocks
-//                // until it succeeds or throws an exception.
-//                mmSocket.connect();
-//            } catch (IOException connectException) {
-//                // Unable to connect; close the socket and return.
-//                try {
-//                    mmSocket.close();
-//                } catch (IOException closeException) {
-////                    Log.e(TAG, "Could not close the client socket", closeException);
-//                }
-//                return;
-//            }
-//
-//            // The connection attempt succeeded. Perform work associated with
-//            // the connection in a separate thread.
-//            manageMyConnectedSocket(mmSocket);
-//        }
-//
-//        // Closes the client socket and causes the thread to finish.
-//        public void cancel() {
-//            try {
-//                mmSocket.close();
-//            } catch (IOException e) {
-////                Log.e(TAG, "Could not close the client socket", e);
-//            }
-//        }
-//    }
-//
-//    /**
-//     * Send a message to this connected device
-//     * @param socket
-//     */
-//    private void manageMyConnectedSocket(BluetoothSocket socket){
-//        MyBluetoothService service = new MyBluetoothService(mHandler, socket);
-//        String s = "Im connected";
-//        service.write(s.getBytes());
-//    }
+        public AcceptThread() {
+            // Use a temporary object that is later assigned to mmServerSocket
+            // because mmServerSocket is final.
+            BluetoothServerSocket tmp = null;
+            try {
+                // MY_UUID is the app's UUID string, also used by the client code.
+                tmp = bluetoothAdapter.listenUsingRfcommWithServiceRecord("Name", SERVICE_ID);
+            } catch (IOException e) {
+                Log.e("Accept socket exception", "Socket's listen() method failed", e);
+            }
+            mmServerSocket = tmp;
+        }
+
+        public void run() {
+            BluetoothSocket socket = null;
+            // Keep listening until exception occurs or a socket is returned.
+            while (true) {
+                try {
+                    socket = mmServerSocket.accept();
+                } catch (IOException e) {
+                    Log.e("Accept", "Socket's accept() method failed", e);
+                    break;
+                }
+
+                if (socket != null) {
+                    // A connection was accepted. Perform work associated with
+                    // the connection in a separate thread.
+                    manageMyConnectedSocket(socket, true);
+                    bluetoothModel.setBluetoothMessage("Connection accepted");
+                    try{
+                        mmServerSocket.close();
+                    }catch (Exception e){
+                        e.printStackTrace();
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        // Closes the connect socket and causes the thread to finish.
+        public void cancel() {
+            try {
+                mmServerSocket.close();
+            } catch (IOException e) {
+                Log.e("Accept is canceled", "Could not close the connect socket", e);
+            }
+        }
+    }
+
+
+
+    /**
+     * Connect thread, used by my phone to connect to server
+     */
+    private class ConnectThread extends Thread {
+        private final BluetoothSocket mmSocket;
+        private final BluetoothDevice mmDevice;
+
+        public ConnectThread(BluetoothDevice device) {
+            // Use a temporary object that is later assigned to mmSocket
+            // because mmSocket is final.
+            BluetoothSocket tmp = null;
+            mmDevice = device;
+
+            try {
+                // Get a BluetoothSocket to connect with the given BluetoothDevice.
+                // MY_UUID is the app's UUID string, also used in the server code.
+                tmp = device.createRfcommSocketToServiceRecord(SERVICE_ID);
+            } catch (IOException e) {
+//                Log.e(TAG, "Socket's create() method failed", e);
+            }
+            mmSocket = tmp;
+        }
+
+        public void run() {
+            // Cancel discovery because it otherwise slows down the connection.
+            bluetoothAdapter.cancelDiscovery();
+
+            try {
+                // Connect to the remote device through the socket. This call blocks
+                // until it succeeds or throws an exception.
+                mmSocket.connect();
+            } catch (IOException connectException) {
+                // Unable to connect; close the socket and return.
+                try {
+                    mmSocket.close();
+                    /**
+                     * Could not connect, so start timer again to try rediscovering device until eventually
+                     * a connection is made
+                     */
+                    startTimer();
+                } catch (IOException closeException) {
+//                    Log.e(TAG, "Could not close the client socket", closeException);
+                }
+                return;
+            }
+
+            // The connection attempt succeeded. Perform work associated with
+            // the connection in a separate thread.
+            bluetoothModel.setBluetoothMessage("Connected to device");
+            manageMyConnectedSocket(mmSocket, false);
+        }
+
+        // Closes the client socket and causes the thread to finish.
+        public void cancel() {
+            try {
+                mmSocket.close();
+            } catch (IOException e) {
+//                Log.e(TAG, "Could not close the client socket", e);
+            }
+        }
+    }
+
+
+
+
+    /**
+     * Send a message to this connected device
+     * @param socket
+     */
+    private void manageMyConnectedSocket(BluetoothSocket socket, boolean server){
+        MyBluetoothService service = new MyBluetoothService(mHandler, socket, server);
+        if(!server){
+            String s = "Im connected";
+            service.write(s.getBytes());
+        }
+    }
+
+
+    Handler mHandler = new Handler(Looper.getMainLooper()){
+        @Override
+        public void handleMessage(Message msg) {
+            switch (msg.what){
+                //read
+                case 0:
+                    byte[] array = (byte[]) msg.obj;
+                    String s = new String(array);
+                    Toast.makeText(ctx, "Message received " + s , Toast.LENGTH_LONG);
+                    bluetoothModel.setBluetoothMessage(s);
+                    break;
+                //write
+                case 1:
+                    byte[] array2 = (byte[]) msg.obj;
+                    break;
+                //toast
+                case 2:
+                    break;
+
+            }
+        }
+    };
+
 }
