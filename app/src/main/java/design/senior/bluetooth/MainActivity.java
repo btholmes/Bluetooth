@@ -45,7 +45,14 @@ import android.widget.Toast;
 
 import design.senior.bluetooth.databinding.ActivityMainBinding;
 
+/**
+ * Client controls socket. Client opens and closes RFCOMM channel. In this implementation
+ * client does all reading, while server does all writing over socket. Everytime the client receives a
+ * message, it closes the socket. Then server starts device discoverability again, and client starts discovery.
+ */
 public class MainActivity extends AppCompatActivity {
+
+    private boolean MyPhonesIsConnected = false;
 
     /**
      * 128 bit format
@@ -67,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
 
     private BluetoothModel bluetoothModel;
 
+    private MyBluetoothService service;
 
     /**
      * Boolean used to determine if device will be client (myPhone) or
@@ -100,7 +108,12 @@ public class MainActivity extends AppCompatActivity {
                             timer.cancel();
                             phone1Found = true;
                             bluetoothModel.setPhone1(deviceHardwareAddress, deviceName, rssi);
-                            connectToDevice(device);
+
+                            /**
+                             * Iam only connecting my phone to 1 device at a time
+                             */
+                            if(!MyPhonesIsConnected)
+                                connectToDevice(device);
                         }else{
                             bluetoothModel.setPhone2(deviceHardwareAddress, deviceName, rssi);
                         }
@@ -472,6 +485,9 @@ public class MainActivity extends AppCompatActivity {
                     manageMyConnectedSocket(socket, true);
                     bluetoothModel.setBluetoothMessage("Connection accepted");
                     try{
+                        /**
+                         * Close unless you want to accept additional connections
+                         */
                         mmServerSocket.close();
                     }catch (Exception e){
                         e.printStackTrace();
@@ -495,7 +511,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     /**
-     * Connect thread, used by my phone to connect to server
+     * Connect thread, used by my phone (client) to connect to server
      */
     private class ConnectThread extends Thread {
         private final BluetoothSocket mmSocket;
@@ -512,7 +528,7 @@ public class MainActivity extends AppCompatActivity {
                 // MY_UUID is the app's UUID string, also used in the server code.
                 tmp = device.createRfcommSocketToServiceRecord(SERVICE_ID);
             } catch (IOException e) {
-//                Log.e(TAG, "Socket's create() method failed", e);
+                Log.e("Couldn't connect", "Socket's create() method failed", e);
             }
             mmSocket = tmp;
         }
@@ -533,15 +549,17 @@ public class MainActivity extends AppCompatActivity {
                      * Could not connect, so start timer again to try rediscovering device until eventually
                      * a connection is made
                      */
+                    MyPhonesIsConnected = false;
                     startTimer();
                 } catch (IOException closeException) {
-//                    Log.e(TAG, "Could not close the client socket", closeException);
+                    Log.e("Client", "Could not close the client socket", closeException);
                 }
                 return;
             }
 
             // The connection attempt succeeded. Perform work associated with
             // the connection in a separate thread.
+            MyPhonesIsConnected = true;
             bluetoothModel.setBluetoothMessage("Connected to device");
             manageMyConnectedSocket(mmSocket, false);
         }
@@ -551,7 +569,7 @@ public class MainActivity extends AppCompatActivity {
             try {
                 mmSocket.close();
             } catch (IOException e) {
-//                Log.e(TAG, "Could not close the client socket", e);
+                Log.e("Couldn't close", "Could not close the client socket", e);
             }
         }
     }
@@ -560,15 +578,16 @@ public class MainActivity extends AppCompatActivity {
 
 
     /**
-     * Send a message to this connected device
+     * This socket holds a connection between a client and server, therefore both client
+     * and server need to manage this socket.
+     *
+     * Client reads, server sends sound and bluetooth info
+     *
      * @param socket
      */
     private void manageMyConnectedSocket(BluetoothSocket socket, boolean server){
-        MyBluetoothService service = new MyBluetoothService(mHandler, socket, server);
-        if(!server){
-            String s = "Im connected";
-            service.write(s.getBytes());
-        }
+        service = new MyBluetoothService(mHandler, socket, server);
+
     }
 
 
@@ -582,10 +601,15 @@ public class MainActivity extends AppCompatActivity {
                     String s = new String(array);
                     Toast.makeText(ctx, "Message received " + s , Toast.LENGTH_LONG);
                     bluetoothModel.setBluetoothMessage(s);
+                    /**
+                     * When client receives message, client closes socket
+                     *
+                     */
+                    service.closeSocket();
                     break;
                 //write
                 case 1:
-                    byte[] array2 = (byte[]) msg.obj;
+//                    byte[] array2 = (byte[]) msg.obj;
                     break;
                 //toast
                 case 2:

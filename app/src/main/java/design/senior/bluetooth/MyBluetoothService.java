@@ -4,14 +4,20 @@ import android.bluetooth.BluetoothSocket;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.util.Log;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
+/**
+ * Used my my phone, the client to create an manage a connetion.
+ */
 public class MyBluetoothService {
     private static final String TAG = "MY_APP_DEBUG_TAG";
     private Handler mHandler; // handler that gets info from Bluetooth service
+
+    private boolean server = false;
 
     private ConnectedThread connectedThread;
 
@@ -19,21 +25,17 @@ public class MyBluetoothService {
         this.mHandler = handler;
         connectedThread = new ConnectedThread(socket);
 
+        this.server = server;
         /**
-         * Server keeps connection open, constantly waiting for data to read
+         * Client and Server both need to manage their socket connection on a separate thread.
+         * Client reads, server writes
          */
-        if(server)
-            connectedThread.run();
+        connectedThread.start();
     }
 
-    /**
-     * Client does writing, so myPhone
-     * @param bytes
-     */
-    public void write(byte[] bytes){
-        connectedThread.write(bytes);
+    public void closeSocket(){
+        connectedThread.cancel();;
     }
-
 
 
     // Defines several constants used when transmitting messages between the
@@ -62,48 +64,71 @@ public class MyBluetoothService {
             try {
                 tmpIn = socket.getInputStream();
             } catch (IOException e) {
-//                Log.e(TAG, "Error occurred when creating input stream", e);
+                Log.e(TAG, "Error occurred when creating input stream", e);
             }
             try {
                 tmpOut = socket.getOutputStream();
             } catch (IOException e) {
-//                Log.e(TAG, "Error occurred when creating output stream", e);
+                Log.e(TAG, "Error occurred when creating output stream", e);
             }
 
             mmInStream = tmpIn;
             mmOutStream = tmpOut;
         }
 
-        public void run() {
-            mmBuffer = new byte[1024];
-            int numBytes; // bytes returned from read()
 
-            // Keep listening to the InputStream until an exception occurs.
-            while (true) {
-                try {
-                    // Read from the InputStream.
-                    numBytes = mmInStream.read(mmBuffer);
-                    // Send the obtained bytes to the UI activity.
-                    Message readMsg = mHandler.obtainMessage(
-                            MessageConstants.MESSAGE_READ, numBytes, -1,
-                            mmBuffer);
-                    readMsg.sendToTarget();
-                } catch (IOException e) {
-//                    Log.d(TAG, "Input stream was disconnected", e);
-                    break;
+        /**
+         * This is the clients methods
+         */
+        public void run() {
+            if(!server){
+                mmBuffer = new byte[1024];
+                int numBytes; // bytes returned from read()
+
+                /**
+                 * Client Keep listening to the InputStream until an exception occurs.
+                 * Sends received data to main thread, so that it can display message
+                 */
+                while (true) {
+                    try {
+                        // Read from the InputStream.
+                        numBytes = mmInStream.read(mmBuffer);
+                        // Send the obtained bytes to the UI activity.
+                        Message readMsg = mHandler.obtainMessage(
+                                MessageConstants.MESSAGE_READ, numBytes, -1,
+                                mmBuffer);
+                        readMsg.sendToTarget();
+                    } catch (IOException e) {
+                        Log.d(TAG, "Input stream was disconnected", e);
+                        break;
+                    }
                 }
+            }else{
+                /**
+                 * This is where server writes data to client
+                 */
+                write("Server sends love".getBytes());
             }
         }
 
+
+        /**
+         * The server's method
+         * @param bytes
+         */
         // Call this from the main activity to send data to the remote device.
         public void write(byte[] bytes) {
+            if(!server)
+                return;
+
             try {
                 mmOutStream.write(bytes);
 
                 // Share the sent message with the UI activity.
-                Message writtenMsg = mHandler.obtainMessage(
-                        MessageConstants.MESSAGE_WRITE, -1, -1, mmBuffer);
-                writtenMsg.sendToTarget();
+//                Message writtenMsg = mHandler.obtainMessage(
+//                        MessageConstants.MESSAGE_WRITE, -1, -1, mmBuffer);
+//                writtenMsg.sendToTarget();
+//                mHandler.sendMessage(writtenMsg);
             } catch (IOException e) {
 //                Log.e(TAG, "Error occurred when sending data", e);
 
@@ -123,7 +148,7 @@ public class MyBluetoothService {
             try {
                 mmSocket.close();
             } catch (IOException e) {
-//                Log.e(TAG, "Could not close the connect socket", e);
+                Log.e(TAG, "Could not close the connect socket", e);
             }
         }
     }
