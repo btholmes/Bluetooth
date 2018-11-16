@@ -238,7 +238,7 @@ public class MainActivity extends AppCompatActivity {
                 }else
                     run = true;
             }
-        }, 0, 10000);
+        }, 0, 5000);
     }
 
     private void setPhone1And2(){
