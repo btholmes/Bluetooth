@@ -43,6 +43,9 @@ import android.bluetooth.BluetoothSocket;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import design.senior.bluetooth.SoundRecorder.Callback;
+import design.senior.bluetooth.SoundRecorder.Recorder;
+import design.senior.bluetooth.calculators.AudioCalculator;
 import design.senior.bluetooth.databinding.ActivityMainBinding;
 
 /**
@@ -51,6 +54,10 @@ import design.senior.bluetooth.databinding.ActivityMainBinding;
  * message, it closes the socket. Then server starts device discoverability again, and client starts discovery.
  */
 public class MainActivity extends AppCompatActivity {
+
+
+    private long bluetoothMessageTimeReceived = 0;
+    private long soundFreqTimeReceived = 0;
 
     private boolean MyPhonesIsConnected = false;
 
@@ -71,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean phone1Found = false;
     private boolean BLUEOOTH_ENABLED = false;
     private boolean CAN_ACCESS_LOCATION = false;
+    private boolean CAN_RECORD_AUDIO = false;
 
     private BluetoothModel bluetoothModel;
 
@@ -81,9 +89,11 @@ public class MainActivity extends AppCompatActivity {
      * server side of Bluetooth socket connections (Phone1 Phone2)
      */
     private Handler mainHandler;
+    private Handler defaultHandler;
     private boolean isTrackingPhone = false;
     private Timer timer;
     private TextView searchingText;
+    private Recorder recorder;
 
     // Create a BroadcastReceiver for ACTION_FOUND.
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
@@ -151,6 +161,7 @@ public class MainActivity extends AppCompatActivity {
         this.ctx = this;
         this.bluetoothModel = new BluetoothModel();
         mainHandler = new Handler(Looper.getMainLooper());
+        defaultHandler = new Handler();
 
         ActivityMainBinding mainBinding = DataBindingUtil.setContentView(this, R.layout.activity_main);
         mainBinding.setLifecycleOwner(this);
@@ -170,7 +181,7 @@ public class MainActivity extends AppCompatActivity {
         });
 
         enableBluetooth();
-        bluetoothLeAdvertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
+//        bluetoothLeAdvertiser = bluetoothAdapter.getBluetoothLeAdvertiser();
 
         /**
          * Unique Id to identify to the target device from the beacon devices(Phone1, Phone2)
@@ -197,8 +208,7 @@ public class MainActivity extends AppCompatActivity {
             bluetoothModel.setSearchingText("Server");
             setPhone1And2();
 
-            Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
+            defaultHandler.postDelayed(new Runnable() {
                 @Override
                 public void run() {
                     /**
@@ -206,7 +216,7 @@ public class MainActivity extends AppCompatActivity {
                      */
                     startAcceptThread();
                 }
-            }, 2000);
+            }, 1500);
 
         }
     }
@@ -235,6 +245,7 @@ public class MainActivity extends AppCompatActivity {
 
     /**
      * Creates a timer task to run every 3seconds, and start a rediscovery of bluetooth devices
+     * Also engages microphone service to begin listening for frequencies (TDOA setup)
      */
     private void setThisIsMe(){
         /**
@@ -242,10 +253,94 @@ public class MainActivity extends AppCompatActivity {
          */
         IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
         registerReceiver(mReceiver, filter);
+        bluetoothModel.setIsMyPhone(true);
+        recorder = new Recorder(getCallback());
+        recorder.start();
         bluetoothAdapter.startDiscovery();
-
         startTimer();
+    }
 
+    private boolean timeSet = false;
+    private float metersPerNanoSecond = .000000343f;
+    private float metersPerMiliSecondds = .343f;
+    private void setTimeDilation(){
+        if(!timeSet){
+            long diff = soundFreqTimeReceived-bluetoothMessageTimeReceived;
+            bluetoothModel.setBluetoothMessage(diff + "");
+            float meters = (diff)*metersPerNanoSecond;
+            /**
+             * My numbers were off by about 2 decimals.. so I divided by 100 and now the readings I'm getting correspond to my expectations.
+             */
+            bluetoothModel.setTimeDilationDistance(meters/100);
+            timeSet = true;
+        }
+    }
+
+    /**
+     * time in m/s or seconds and speed in m/s or m/ms
+     * @param time
+     * @return
+     */
+    private double getDistance(long time){
+        return 0.5*speedOfSound*time;
+    }
+
+    //    private double speedOfSound = 340.29;  //m/s
+    private double speedOfSound = 0.34029;  //m/ms
+    private long time = 0;
+//
+//    private double getVelocity(double frequency){
+//        return ((frequency/freqOfTone)*speedOfSound)-speedOfSound;
+//    }
+
+    private boolean areEqual(double start, double end){
+        double threshold = 2.0;
+        double diff = start-end;
+        if(end > start)
+            diff = end-start;
+        if(diff < threshold)
+            return true;
+
+        return false;
+    }
+
+    private long soundTimeReceived = -1;
+    private int frequency = 4000;
+    private AudioCalculator audioCalculator = new AudioCalculator();
+
+    private Callback getCallback(){
+        return new Callback() {
+
+            @Override
+            public void onBufferAvailable(byte[] buffer) {
+                audioCalculator.setBytes(buffer);
+//                int amplitude = audioCalculator.getAmplitude();
+//                double decibel = audioCalculator.getDecibel();
+                final double wave = audioCalculator.getFrequency();
+                if(areEqual(wave, frequency)){
+                    soundFreqTimeReceived = System.nanoTime();
+                    setTimeDilation();
+                }
+                bluetoothModel.setFreqOfTone((int)wave);
+
+//
+//                final String amp = String.valueOf(amplitude + " Amp");
+//                final String db = String.valueOf(decibel + " db");
+//                final String hz = String.valueOf(wave + " Hz");
+
+
+
+//                if(true){
+////                    Log.e("Hertz: ", hz);
+//                    defaultHandler.post(new Runnable() {
+//                        @Override
+//                        public void run() {
+//                        }
+//                    });
+//                }
+
+            }
+        };
     }
 
     private void startTimer(){
@@ -276,6 +371,7 @@ public class MainActivity extends AppCompatActivity {
         /**
          * Register an advertising receiver for nearby devices to discover me (Phone1, Phone2)
          */
+        bluetoothModel.setIsMyPhone(false);
         IntentFilter advertisingFilter = new IntentFilter(BluetoothAdapter.ACTION_SCAN_MODE_CHANGED);
         registerReceiver(advertisingReceiver, advertisingFilter);
         enableDiscoverable();
@@ -301,26 +397,31 @@ public class MainActivity extends AppCompatActivity {
 //                connect(device.getAddress());
             }
         };
-        bluetoothAdapter.startLeScan(leScanCallback);// find match device
+//        bluetoothAdapter.startLeScan(leScanCallback);// find match device
     }
 
     private boolean hasPermissions(){
         return (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
                 == PackageManager.PERMISSION_GRANTED &&
                 ContextCompat.checkSelfPermission(this,Manifest.permission.ACCESS_FINE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
                         == PackageManager.PERMISSION_GRANTED);
     }
 
 
     private void getPermissions(){
         CAN_ACCESS_LOCATION = false;
+        CAN_RECORD_AUDIO = false;
         if(!hasPermissions())
         {
             ActivityCompat.requestPermissions(this, new String[]{
                     Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION}, REQUEST_LOCATION);
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.RECORD_AUDIO}, REQUEST_LOCATION);
         }else{
             CAN_ACCESS_LOCATION = true;
+            CAN_RECORD_AUDIO = true;
             discoverBluetoothDevices();
         }
     }
@@ -341,9 +442,13 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         if(requestCode == REQUEST_LOCATION){
-            if (grantResults.length == 2) {
+            if (grantResults.length >= 2) {
                 if (grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
                      CAN_ACCESS_LOCATION = true;
+                    if(grantResults.length == 3){
+                        if(grantResults[2] == PackageManager.PERMISSION_GRANTED)
+                            CAN_RECORD_AUDIO = true;
+                    }
                      discoverBluetoothDevices();
                 }
             }
@@ -450,7 +555,8 @@ public class MainActivity extends AppCompatActivity {
 
 
     /**
-     * Accept thread for bluetooth server (Phone1 Phone2)
+     * Accept thread for bluetooth server (Phone1 Phone2), Server is waiting for a Client
+     * to crd
      */
     private class AcceptThread extends Thread {
         private final BluetoothServerSocket mmServerSocket;
@@ -587,7 +693,6 @@ public class MainActivity extends AppCompatActivity {
      */
     private void manageMyConnectedSocket(BluetoothSocket socket, boolean server){
         service = new MyBluetoothService(mHandler, socket, server);
-
     }
 
 
@@ -601,6 +706,7 @@ public class MainActivity extends AppCompatActivity {
                     String s = new String(array);
                     Toast.makeText(ctx, "Message received " + s , Toast.LENGTH_LONG);
                     bluetoothModel.setBluetoothMessage(s);
+                    bluetoothMessageTimeReceived = System.nanoTime();
                     /**
                      * When client receives message, client closes socket
                      *

@@ -8,7 +8,12 @@ public class BluetoothModel extends BaseObservable {
     private String bluetoothMessage;
     private String defaultMessage = "Bluetooth Message";
 
+    private boolean isMyPhone = false;
+
+    private double timeDilationDistance = 0.0;
+
     private String searchingText;
+    private int freqOfTone;
 
     private BluetoothDevice phone1;
     private BluetoothDevice phone2;
@@ -83,6 +88,35 @@ public class BluetoothModel extends BaseObservable {
     public void setBluetoothMessage(String message){
         this.bluetoothMessage = message;
         notifyPropertyChanged(BR.bluetoothMessage);
+    }
+
+    public void setFreqOfTone(int freq){
+        this.freqOfTone = freq;
+        notifyPropertyChanged(BR.freqOfTone);
+    }
+
+    public void setIsMyPhone(boolean myPhone){
+        this.isMyPhone = myPhone;
+        notifyPropertyChanged(BR.isMyPhone);
+    }
+
+    public void setTimeDilationDistance(double distance){
+        this.timeDilationDistance = distance;
+        notifyPropertyChanged(BR.timeDilationDistance);
+    }
+
+    @Bindable
+    public String getTimeDilationDistance(){
+        return String.format("%.2f meters", timeDilationDistance);
+    }
+    @Bindable
+    public boolean getIsMyPhone(){
+        return this.isMyPhone;
+    }
+
+    @Bindable
+    public String getFreqOfTone(){
+        return this.freqOfTone + "";
     }
 
     @Bindable

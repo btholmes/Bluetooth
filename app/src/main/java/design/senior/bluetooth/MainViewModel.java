@@ -4,6 +4,7 @@ import android.arch.lifecycle.LiveData;
 import android.arch.lifecycle.MutableLiveData;
 import android.arch.lifecycle.ViewModel;
 import android.bluetooth.BluetoothDevice;
+import android.databinding.Bindable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +12,8 @@ import java.util.List;
 public class MainViewModel extends ViewModel {
 
     public MutableLiveData<List<BluetoothDevice>> deviceList;
+    public boolean thisIsMe = false;
+
     public MainViewModel(){
         if(deviceList == null)
             deviceList = new MutableLiveData<>();
