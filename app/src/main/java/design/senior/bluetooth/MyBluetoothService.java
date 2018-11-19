@@ -1,6 +1,7 @@
 package design.senior.bluetooth;
 
 import android.bluetooth.BluetoothSocket;
+import android.icu.util.Output;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
@@ -10,14 +11,32 @@ import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 
+import com.google.common.primitives.Longs;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.Timer;
+import java.util.TimerTask;
+
+import design.senior.bluetooth.SoundRecorder.Callback;
+import design.senior.bluetooth.SoundRecorder.Recorder;
+import design.senior.bluetooth.calculators.AudioCalculator;
 
 /**
  * Used by both phones to manage a socket connection on a separate thread
  */
 public class MyBluetoothService {
+
+    private boolean newChirp = false;
+    private Recorder recorder;
+    private AudioCalculator audioCalculator;
+    private long startTime = 0;
+    private int tone = -1;
+    private int sequence = 0;
+    private boolean run = false;
+    private Timer timer;
     private static final String TAG = "MY_APP_DEBUG_TAG";
     private Handler mHandler; // handler that gets info from Bluetooth service
 
@@ -31,14 +50,62 @@ public class MyBluetoothService {
 
         this.server = server;
         /**
+         * Server will be the device sending the sound frequency to client, so generate tone in advance
+         * so that it can be used immediately when needed
+         */
+        if(server){
+            audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
+                    sampleRate, AudioFormat.CHANNEL_CONFIGURATION_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT, (int)numSamples*2,
+                    AudioTrack.MODE_STATIC);
+            timer = new Timer();
+            generateTones(-1);
+            setUpAudioTrack();
+            recorder = new Recorder(getCallback());
+            recorder.start();
+            audioCalculator = new AudioCalculator();
+            newChirp = false;
+        }
+
+        /**
          * Client and Server both need to manage their socket connection on a separate thread.
          * Client reads, server writes
          */
         connectedThread.start();
     }
 
+    /**
+     * Server also listens to see how long it takes them to recognize their own chirp. Technically the difference
+     * between the time it takes the client phone to recognize the chirp, and the time it take the emiting source to recognize the chirp
+     * should be the delay.
+     *
+     * @return
+     */
+    private Callback getCallback(){
+        return new Callback() {
+            @Override
+            public void onBufferAvailable(byte[] buffer) {
+                if(newChirp){
+                    audioCalculator.setBytes(buffer);
+//                int amplitude = audioCalculator.getAmplitude();
+//                double decibel = audioCalculator.getDecibel();
+
+                    final double wave = audioCalculator.getFrequency();
+                    if(wave >= 3000){
+                        newChirp = false;
+                        timeToHearMyOwnChirp = System.currentTimeMillis();
+                    }
+                }
+            }
+        };
+    }
+
     public void closeSocket(){
         connectedThread.cancel();
+    }
+
+    public void write(String text){
+        connectedThread.write();
     }
 
 
@@ -82,7 +149,7 @@ public class MyBluetoothService {
 
 
         /**
-         * This is the clients methods
+         * Client and server handle this method differently
          */
         public void run() {
             if(!server){
@@ -108,39 +175,53 @@ public class MyBluetoothService {
                     }
                 }
             }else{
-                /**
-                 * This is where server writes data to client
-                 */
-                long time = System.nanoTime();
-                String sendMe = time + "";
-                byte[] bytes = sendMe.getBytes();
-                write(bytes);
+                setRepeatingSoundTask();
             }
         }
 
 
+        private void setRepeatingSoundTask(){
+            timer = new Timer();
+            mHandler.post(new Runnable() {
+                @Override
+                public void run() {
+                    timer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            if(run){
+                                /**
+                                 * This is where server writes data to client
+                                 */
+//                                long time = System.currentTimeMillis();
+//                                String sendMe = time + "";
+//                                byte[] bytes = sendMe.getBytes();
+                                write();
+                                run = false;
+                            }else
+                                run = true;
+                        }
+                    }, 0, 500);
+                }
+            });
+        }
 
         /**
-         * The server's method
-         * @param bytes
+         * The server's method, we should send decibel levels of the chirp over bluetooth, then on the client device, we can
+         * guage our distance by whether or not we hear the broadcasted soundFrequency
+         *
          */
         // Call this from the main activity to send data to the remote device.
-        public void write(byte[] bytes) {
+        public void write() {
             if(!server)
                 return;
 
             try {
-                mmOutStream.write(bytes);
-                new sendAudioAsync().execute();
-
-                // Share the sent message with the UI activity.
-
-
+                play(mmOutStream);
 //                Message writtenMsg = mHandler.obtainMessage(
 //                        MessageConstants.MESSAGE_WRITE, -1, -1, mmBuffer);
 //                writtenMsg.sendToTarget();
 //                mHandler.sendMessage(writtenMsg);
-            } catch (IOException e) {
+            } catch (Exception e) {
 //                Log.e(TAG, "Error occurred when sending data", e);
 
                 /**
@@ -171,10 +252,19 @@ public class MyBluetoothService {
      */
 
 
-    private final double duration = 0.5; // seconds
-    private int freqOfTone = 4000; // Hz
-
-    private long startTime;
+    private final double duration = 0.1; // seconds
+//    private final double duration = 1.5; // seconds
+    /**
+     *  		3950 = B7
+     *  		5925 = D
+     *  		5967 = F#8
+     *  		7040 = A
+     */
+    private int default_tone = 4100;
+    private int b_freq = 3950; // Hz
+    private int d_freq = 5925; // Hz
+    private int f_freq = 5967; // Hz
+    private int a_freq = 7040; // Hz
 
     /**
      * Can generate any tone less than sampleRate/2 Hz
@@ -185,7 +275,10 @@ public class MyBluetoothService {
     double dnumSamples = Math.ceil(duration * sampleRate);
     int numSamples = (int) dnumSamples;
     double sample[] = new double[numSamples];
-    byte generatedSnd[] = new byte[2 * numSamples];
+    byte b[] = new byte[2 * numSamples];
+    byte d[] = new byte[2 * numSamples];
+    byte f[] = new byte[2 * numSamples];
+    byte a[] = new byte[2 * numSamples];
 
     private AudioTrack audioTrack;
 
@@ -196,11 +289,8 @@ public class MyBluetoothService {
     public class sendAudioAsync extends AsyncTask<Void, Void, Void> {
         @Override
         protected Void doInBackground(Void... voids) {
-            if(!isPlaying){
-                isPlaying = true;
-                generateTone();
-                play();
-            }
+//            generateTone();
+//            play();
             return null;
         }
 
@@ -211,8 +301,38 @@ public class MyBluetoothService {
         }
     }
 
+    private void generateTones(int val){
+        tone = val;
+        if(val == -1)
+            generateTone(b, -1);
+        else{
+            generateTone(b, 0);
+            generateTone(d, 1);
+            generateTone(f, 2);
+            generateTone(a, 3);
+        }
+    }
 
-    private void generateTone(){
+    private void generateTone(byte[] storeHere, int tone){
+        int freqOfTone = 0;
+        switch (tone){
+            case 0:
+                freqOfTone = b_freq;
+                break;
+            case 1:
+                freqOfTone = d_freq;
+                break;
+            case 2:
+                freqOfTone = f_freq;
+                break;
+            case 3:
+                freqOfTone = a_freq;
+                break;
+            default:
+                freqOfTone = default_tone;
+                break;
+
+        }
         // fill out the array
         for (int i = 0; i < numSamples; ++i) {    // Fill the sample array
             sample[i] = Math.sin(freqOfTone * 2 * Math.PI * i / (sampleRate));
@@ -230,8 +350,8 @@ public class MyBluetoothService {
             // Ramp up to maximum
             final short val = (short) ((dVal * 32767 * i/ramp));
             // in 16 bit wav PCM, first byte is the low order byte
-            generatedSnd[idx++] = (byte) (val & 0x00ff);
-            generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
+            storeHere[idx++] = (byte) (val & 0x00ff);
+            storeHere[idx++] = (byte) ((val & 0xff00) >>> 8);
         }
 
 
@@ -240,8 +360,8 @@ public class MyBluetoothService {
             // scale to maximum amplitude
             final short val = (short) ((dVal * 32767));
             // in 16 bit wav PCM, first byte is the low order byte
-            generatedSnd[idx++] = (byte) (val & 0x00ff);
-            generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
+            storeHere[idx++] = (byte) (val & 0x00ff);
+            storeHere[idx++] = (byte) ((val & 0xff00) >>> 8);
         }
 
         for (i = i; i< numSamples; ++i) {                                // Ramp amplitude down
@@ -249,41 +369,92 @@ public class MyBluetoothService {
             // Ramp down to zero
             final short val = (short) ((dVal * 32767 * (numSamples-i)/ramp ));
             // in 16 bit wav PCM, first byte is the low order byte
-            generatedSnd[idx++] = (byte) (val & 0x00ff);
-            generatedSnd[idx++] = (byte) ((val & 0xff00) >>> 8);
+            storeHere[idx++] = (byte) (val & 0x00ff);
+            storeHere[idx++] = (byte) ((val & 0xff00) >>> 8);
         }
     }
 
+    /**
+     * 0 = b
+     * 1 = d
+     * 2 = f
+     * 3 = a
+     */
+    private void setUpAudioTrack(){
+        try{
+            switch (sequence%4){
+                case 0:
+                    audioTrack.write(b, 0, b.length);
+                    break;
+                case 1:
+                    audioTrack.write(d, 0, d.length);
+                    break;
+                case 2:
+                    audioTrack.write(f, 0, f.length);
+                    break;
+                case 3:
+                    audioTrack.write(a, 0, a.length);
+                    break;
+                default:
+                    break;
+            }
 
-    private void play(){
-        audioTrack = null;                                    // Get audio track
+            if(tone != -1)
+                sequence++;
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    private long timeToHearMyOwnChirp = -1;
+    /**
+     * Send bluetooth signal, then sound signal, the bluetooth signal
+     * @param outputStream
+     */
+    private void play(final OutputStream outputStream){
+        byte[] time = null;
         try {
-            audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
-                    sampleRate, AudioFormat.CHANNEL_CONFIGURATION_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT, (int)numSamples*2,
-                    AudioTrack.MODE_STATIC);
-            audioTrack.write(generatedSnd, 0, generatedSnd.length);        // Load the track
-            startTime = System.currentTimeMillis();
-            isPlaying = true;
-            startTime = System.currentTimeMillis();
-            audioTrack.play();                                             // Play the track
+            audioTrack.stop();
+            if(tone != -1)
+                setUpAudioTrack();
+            else
+                audioTrack.reloadStaticData();
+//            byte[] time = Longs.toByteArray(System.currentTimeMillis());
+            newChirp = true;
+            timeToHearMyOwnChirp = -1;
+            time = ByteBuffer.allocate(Long.SIZE / Byte.SIZE).putLong(System.currentTimeMillis()).array();
+            outputStream.write(time);
+            outputStream.flush();
+            audioTrack.setPlaybackHeadPosition(0);
+            audioTrack.play();
+
+            /**
+             * Wait for sound to finish
+             */
+            mHandler.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    try{
+                        if(timeToHearMyOwnChirp > 0){
+                            byte[] currentTime = ByteBuffer.allocate(Long.SIZE / Byte.SIZE).putLong(timeToHearMyOwnChirp).array();
+                            outputStream.write(currentTime);
+                            outputStream.flush();
+                        }
+                    }catch (Exception e){
+                        e.printStackTrace();
+                    }
+                }
+            }, 250);
+
         }
         catch (Exception e){
             Log.e("Error", "Couldn't create audio track");
             e.printStackTrace();
         }
 
-        int x =0;
-        do{                                                              // Monitor playback to find when done
-            if (audioTrack != null)
-                x = audioTrack.getPlaybackHeadPosition();
-            else
-                x = numSamples;
-        } while (x<numSamples);
-
-        isPlaying = false;
-//        broadcastResult();
-        if (audioTrack != null) audioTrack.release();
+//        audioTrack.setPlaybackHeadPosition(0);
+//        if (audioTrack != null) audioTrack.release();
+        audioTrack.flush();
     }
 
 

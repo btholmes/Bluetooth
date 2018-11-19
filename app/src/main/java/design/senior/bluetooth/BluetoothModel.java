@@ -8,12 +8,15 @@ public class BluetoothModel extends BaseObservable {
     private String bluetoothMessage;
     private String defaultMessage = "Bluetooth Message";
 
+    private long playDelay = -1;
+    private long elapsedCalculationTime = -1;
+
     private boolean isMyPhone = false;
 
     private double timeDilationDistance = 0.0;
 
     private String searchingText;
-    private int freqOfTone;
+    private String freqOfTone;
 
     private BluetoothDevice phone1;
     private BluetoothDevice phone2;
@@ -90,8 +93,8 @@ public class BluetoothModel extends BaseObservable {
         notifyPropertyChanged(BR.bluetoothMessage);
     }
 
-    public void setFreqOfTone(int freq){
-        this.freqOfTone = freq;
+    public void setFreqOfTone(String freqOfTone){
+        this.freqOfTone = freqOfTone;
         notifyPropertyChanged(BR.freqOfTone);
     }
 
@@ -105,6 +108,46 @@ public class BluetoothModel extends BaseObservable {
         notifyPropertyChanged(BR.timeDilationDistance);
     }
 
+    public long getDelay(){
+        if(this.elapsedCalculationTime >= 0 && this.playDelay >= 0){
+            if(this.elapsedCalculationTime >= this.playDelay)
+                return this.elapsedCalculationTime - this.playDelay;
+        }
+        return -1;
+    }
+
+    private float metersPerMiliSecondds = .343f;
+    private final int systemDelay = 100;
+
+    public float getDistance(){
+        long diff = getDelay();
+        if(diff >= 0){
+            float meters = (diff)*metersPerMiliSecondds;
+            return meters;
+        }
+        return -1;
+    }
+
+    public void setPlayDelay(long playDelay){
+        this.playDelay = playDelay;
+        notifyPropertyChanged(BR.playDelay);
+    }
+
+    public void setElapsedCalculationTime(long elapsedCalculationTime){
+        this.elapsedCalculationTime = elapsedCalculationTime;
+        notifyPropertyChanged(BR.elapsedCalculationTime);
+    }
+
+    @Bindable
+    public String getPlayDelay(){
+        return "Play Delay: " + this.playDelay;
+    }
+
+    @Bindable
+    public String getElapsedCalculationTime(){
+        return "Elapsed Calc Time: " + this.elapsedCalculationTime;
+    }
+
     @Bindable
     public String getTimeDilationDistance(){
         return String.format("%.2f meters", timeDilationDistance);
@@ -116,7 +159,7 @@ public class BluetoothModel extends BaseObservable {
 
     @Bindable
     public String getFreqOfTone(){
-        return this.freqOfTone + "";
+        return freqOfTone;
     }
 
     @Bindable

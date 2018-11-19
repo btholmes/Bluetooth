@@ -16,6 +16,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.databinding.DataBindingUtil;
 import android.os.Handler;
@@ -34,6 +35,10 @@ import android.util.Log;
 import android.view.View;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.Timer;
@@ -42,6 +47,8 @@ import java.util.UUID;
 import android.bluetooth.BluetoothSocket;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import com.google.common.primitives.Longs;
 
 import design.senior.bluetooth.SoundRecorder.Callback;
 import design.senior.bluetooth.SoundRecorder.Recorder;
@@ -56,8 +63,11 @@ import design.senior.bluetooth.databinding.ActivityMainBinding;
 public class MainActivity extends AppCompatActivity {
 
 
-    private long bluetoothMessageTimeReceived = 0;
-    private long soundFreqTimeReceived = 0;
+    private static final String PREFS_NAME = "We have one shared pref... and it lives here";
+    private static final String REALM_REFRESH_DATE = "string, stores last time Realm was completely deleted from phone";
+    private long bluetoothMessageTimeReceived = -1;
+    private long soundTimeReceived = -1;
+    private boolean chirpHeard = false;
 
     private boolean MyPhonesIsConnected = false;
 
@@ -81,6 +91,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean CAN_RECORD_AUDIO = false;
 
     private BluetoothModel bluetoothModel;
+    private Presenter presenter;
 
     private MyBluetoothService service;
 
@@ -154,18 +165,59 @@ public class MainActivity extends AppCompatActivity {
     };
 
 
+    /**
+     * Day is formattted as dd-MM-yyyy
+     *
+     * This method doesn't actually belong to this application, but I put it here for now.
+     * Check if new day has begun since the last time you opened the app.. If so, wipe
+     * old realm data, begin new day for collection.
+     */
+    private void checkRealmDataOld(){
+        SharedPreferences prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+        SimpleDateFormat sdf = new SimpleDateFormat("dd-MM-yyyy");
+
+        Date today = Calendar.getInstance().getTime();
+        System.out.println("Current time => " + today);
+
+        String realm_refresh_date = prefs.getString(REALM_REFRESH_DATE, null);
+        if(realm_refresh_date == null){
+            String formatedDate = sdf.format(today);
+            prefs.edit().putString(formatedDate, REALM_REFRESH_DATE).apply();
+        }else{
+            try{
+                Date lastRefreshedDate = sdf.parse(realm_refresh_date);
+                if(today.after(lastRefreshedDate)){
+                    /**
+                     * Today is a new, unrecorded day in Realm history so delete all
+                     * from realm
+                     */
+                }
+                String dayFromDate= sdf.format(lastRefreshedDate);
+
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+    }
+
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
         this.ctx = this;
+        checkRealmDataOld();
+
+
         this.bluetoothModel = new BluetoothModel();
+        this.presenter = new Presenter();
         mainHandler = new Handler(Looper.getMainLooper());
         defaultHandler = new Handler();
 
         ActivityMainBinding mainBinding = DataBindingUtil.setContentView(this, R.layout.activity_main);
         mainBinding.setLifecycleOwner(this);
         mainBinding.setData(bluetoothModel);
+        mainBinding.setPresenter(presenter);
 
 
         /**
@@ -260,41 +312,58 @@ public class MainActivity extends AppCompatActivity {
         startTimer();
     }
 
-    private boolean timeSet = false;
-    private float metersPerNanoSecond = .000000343f;
-    private float metersPerMiliSecondds = .343f;
-    private void setTimeDilation(){
-        if(!timeSet){
-            long diff = soundFreqTimeReceived-bluetoothMessageTimeReceived;
-            bluetoothModel.setBluetoothMessage(diff + "");
-            float meters = (diff)*metersPerNanoSecond;
-            /**
-             * My numbers were off by about 2 decimals.. so I divided by 100 and now the readings I'm getting correspond to my expectations.
-             */
-            bluetoothModel.setTimeDilationDistance(meters/100);
-            timeSet = true;
-        }
-    }
+//    private float metersPerNanoSecond = .000000343f;
+//    private float metersPerMiliSecondds = .159f;
+//    private final int systemDelay = 100;
 
     /**
-     * time in m/s or seconds and speed in m/s or m/ms
-     * @param time
-     * @return
+     * If soundTimeReceived was not set, then chirp was missed between the two bluetooth calls.
+     *
+     * @param elapsedCalculationTime
      */
-    private double getDistance(long time){
-        return 0.5*speedOfSound*time;
+    private void setTimeDilation(long elapsedCalculationTime){
+//        if(soundTimeReceived == -1){
+//            bluetoothModel.setBluetoothMessage("-1");
+//            bluetoothModel.setTimeDilationDistance(-1);
+//        }else{
+//            /**
+//             * Difference between when server first hears frequency, and when client first hears frequency,
+//             * the server should be 0m/s, and client should be 0 + delay
+//             */
+//            if(playDelay > 0 && elapsedCalculationTime >= playDelay){
+//                long diff = elapsedCalculationTime-playDelay;
+//                bluetoothModel.setBluetoothMessage(diff + " mili seconds");
+//                float meters = (diff)*metersPerMiliSecondds;
+//                bluetoothModel.setTimeDilationDistance(meters);
+//            }
+//        }
     }
 
-    //    private double speedOfSound = 340.29;  //m/s
-    private double speedOfSound = 0.34029;  //m/ms
-    private long time = 0;
+//    /**
+//     * time in m/s or seconds and speed in m/s or m/ms
+//     * @param time
+//     * @return
+//     */
+//    private double getDistance(long time){
+//        return 0.5*speedOfSound*time;
+//    }
+//
+//    //    private double speedOfSound = 340.29;  //m/s
+//    private double speedOfSound = 0.34029;  //m/ms
+//    private long time = 0;
 //
 //    private double getVelocity(double frequency){
 //        return ((frequency/freqOfTone)*speedOfSound)-speedOfSound;
 //    }
 
+    /**
+     * Two waves are equal as long as they are no greater than 1 hz apart
+     * @param start
+     * @param end
+     * @return
+     */
     private boolean areEqual(double start, double end){
-        double threshold = 2.0;
+        double threshold = 1.0;
         double diff = start-end;
         if(end > start)
             diff = end-start;
@@ -304,41 +373,48 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    private long soundTimeReceived = -1;
-    private int frequency = 4000;
+    private long startCalculationTime = -1;
+    long elapsedTime;
+    private int frequency = 14100;
     private AudioCalculator audioCalculator = new AudioCalculator();
 
     private Callback getCallback(){
         return new Callback() {
 
+            /**
+             * This method is only useful in the time between when the first bluetooth, and the chirp is heard,
+             * it is not useful after the second bluetooth message is received, because that means it was missed.
+             *
+             * @param buffer
+             */
             @Override
             public void onBufferAvailable(byte[] buffer) {
-                audioCalculator.setBytes(buffer);
+                if (soundTimeReceived == -1 && firstReceived && bluetoothMessageTimeReceived != -1) {
+//                    if (startCalculationTime == -1)
+//                        startCalculationTime = System.currentTimeMillis();
+
+                    audioCalculator.setBytes(buffer);
 //                int amplitude = audioCalculator.getAmplitude();
 //                double decibel = audioCalculator.getDecibel();
-                final double wave = audioCalculator.getFrequency();
-                if(areEqual(wave, frequency)){
-                    soundFreqTimeReceived = System.nanoTime();
-                    setTimeDilation();
-                }
-                bluetoothModel.setFreqOfTone((int)wave);
-
-//
-//                final String amp = String.valueOf(amplitude + " Amp");
-//                final String db = String.valueOf(decibel + " db");
-//                final String hz = String.valueOf(wave + " Hz");
-
-
-
-//                if(true){
-////                    Log.e("Hertz: ", hz);
-//                    defaultHandler.post(new Runnable() {
-//                        @Override
-//                        public void run() {
+                    final double wave = audioCalculator.getFrequency();
+//                if(areEqual(wave, frequency)){
+                    if (wave >= 3000) {
+//                        if (startCalculationTime > 0) {
+                            chirpHeard = true;
+                            soundTimeReceived = System.currentTimeMillis();
+//                        /**
+//                         * If this delay is greater than soundPlaybackDelay, then chirp was missed
+//                         */
+//                            elapsedTime = (soundTimeReceived - startCalculationTime);
+                            elapsedTime = (soundTimeReceived - bluetoothMessageTimeReceived);
+                            bluetoothModel.setElapsedCalculationTime(elapsedTime);
+//                            setTimeDilation(elapsedTime);
 //                        }
-//                    });
-//                }
 
+//                    bluetoothModel.setFreqOfTone((int)wave);
+                    }
+
+                }
             }
         };
     }
@@ -681,13 +757,16 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
+    private void missedChirp(){
+
+    }
 
 
     /**
-     * This socket holds a connection between a client and server, therefore both client
+     * This socket holds a connection between a client and server, both client
      * and server need to manage this socket.
      *
-     * Client reads, server sends sound and bluetooth info
+     * Client reads, server sends sound and bluetooth messages
      *
      * @param socket
      */
@@ -695,6 +774,10 @@ public class MainActivity extends AppCompatActivity {
         service = new MyBluetoothService(mHandler, socket, server);
     }
 
+    private long soundPlaybackDelay = -1;
+    private long playDelay = -1;
+    private boolean firstReceived = false;
+    private long firstMessageReceivedTime = -1;
 
     Handler mHandler = new Handler(Looper.getMainLooper()){
         @Override
@@ -702,16 +785,92 @@ public class MainActivity extends AppCompatActivity {
             switch (msg.what){
                 //read
                 case 0:
-                    byte[] array = (byte[]) msg.obj;
-                    String s = new String(array);
-                    Toast.makeText(ctx, "Message received " + s , Toast.LENGTH_LONG);
-                    bluetoothModel.setBluetoothMessage(s);
-                    bluetoothMessageTimeReceived = System.nanoTime();
                     /**
-                     * When client receives message, client closes socket
+                     * If initial bluetooth message was received, then enter if statement:
+                     * This next bluetooth message is the inclusive server system duration between
+                     * (sending bluetooth message, playing chirp)
+                     *
+                     * This delay can be used by the client (my phone) to determine the window when
+                     * the chirp will be heard.
+                     *
+                     * Total delay <= time bluetooth message is received + delay
+                     *
+                     *
+                     * If this statement is considered then both bluetooth messages were received the sequence was:
+                     *
+                     * (1st bluetooth sent, sound sent, 2nd bluetooth sent) -> (1st bluetooth received, soundReceived, 2nd bluetooth received) -> updateTimeDilation
+                     *
+                     * In this case it is possible soundTimeReceived was not updated, and the chirp was missed
+                     * then the sequence would be:
+                     *
+                     * (1st bluetooth sent, sound sent, 2nd bluetooth sent) -> (1st bluetooth received, sound not received, 2nd bluetooth received) -> updateTimeDilation
+                     *
+                     * It's also possible for the chirp to reach the mic before this statement is executed,
+                     * in that case the sequence followed:
+                     *
+                     *
+                     * (1st bluetooth sent, sound sent, 2nd bluetooth sent) -> (1st bluetooth received, soundReceived, 2nd bluetooth not received) -> updateTimeDilation
+                     *
+                     *Then the chirp was heard()
                      *
                      */
-                    service.closeSocket();
+                    if(firstReceived){
+                        byte[] array = (byte[]) msg.obj;
+//                        totalDelay = Longs.fromByteArray(array) - firstMessageReceivedTime;
+                        long secondReceived = ByteBuffer.wrap(array).getLong();
+                        playDelay = secondReceived - firstMessageReceivedTime;
+                        bluetoothModel.setPlayDelay(playDelay);
+                        if(chirpHeard){
+                            /**
+                             * Chirp was heard before the 2nd bluetooth message
+                             */
+                            bluetoothModel.setBluetoothMessage(bluetoothModel.getDelay() + " mili seconds");
+                            bluetoothModel.setTimeDilationDistance(bluetoothModel.getDistance());
+                            success();
+                        }else{
+                            /**
+                             * Missed the chirp
+                             */
+                            missedChirp();
+//                            setTimeDilation(soundPlaybackDelay);
+                        }
+                        long startTimeDelay = startCalculationTime - bluetoothMessageTimeReceived;
+                        /**
+                         * If startCalculation == -1, means chirp was never found, so startTimeDelay
+                         * will be less than 0
+                         */
+                        if(startTimeDelay >= 0){
+                            /**
+                             * If soundPlaybackDelay takes longer than a second, then sound was missed
+                             */
+                            if(startTimeDelay > soundPlaybackDelay && soundPlaybackDelay < 1000){
+                                missedChirp();
+                            }else if(soundPlaybackDelay >= 1000){
+                                /**
+                                 * Data was messed up, didn't get translated correctly
+                                 */
+                                badData();
+                            }
+                        }
+
+                        bluetoothMessageTimeReceived = -1;
+                        firstReceived = false;
+                    }else{
+                        byte[] array = (byte[]) msg.obj;
+//                        firstMessageReceivedTime = Longs.fromByteArray(array);
+                        firstMessageReceivedTime = ByteBuffer.wrap(array).getLong();
+                        bluetoothMessageTimeReceived = System.currentTimeMillis();
+                        soundTimeReceived = -1;
+                        soundPlaybackDelay = -1;
+                        startCalculationTime = -1;
+                        playDelay = -1;
+//                        bluetoothModel.setBluetoothMessage("-1");
+//                        bluetoothModel.setTimeDilationDistance(-1);
+                        bluetoothModel.setElapsedCalculationTime(-1);
+                        bluetoothModel.setPlayDelay(-1);
+                        chirpHeard = false;
+                        firstReceived = true;
+                    }
                     break;
                 //write
                 case 1:
@@ -725,4 +884,11 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    private void badData(){
+
+    }
+
+    private void success(){
+
+    }
 }
