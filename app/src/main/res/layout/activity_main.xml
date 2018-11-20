@@ -18,7 +18,21 @@
         android:layout_height="match_parent"
         tools:context=".MainActivity">
 
+        <TextView
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentRight="true"
+            android:layout_margin="15dp"
+            android:textSize="20sp"
+            android:textColor="@{data.isRunning == true ? @color/red : @color/green}"
+            android:textStyle="normal"
+            android:text="@{data.isRunning == true ? data.stopText : data.startText}"
+            android:onClick="@{(view) -> data.onServerPauseClick(view)}"
+            />
+
         <LinearLayout
+            android:id="@+id/calculation_times"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -41,7 +55,62 @@
 
         </LinearLayout>
 
+
         <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_above="@id/times_received"
+            android:layout_centerInParent="true"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            >
+
+            <TextView
+                android:text="@{data.temperature}"
+                android:textStyle="normal"
+                android:textSize="20sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:text="@{data.speedOfSoundInAir}"
+                android:textStyle="normal"
+                android:textSize="20sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+
+
+        <LinearLayout
+            android:id="@+id/times_received"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_above="@id/center_content"
+            android:layout_centerInParent="true"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            >
+
+            <TextView
+                android:text="@{data.serverTimeHeard}"
+                android:textStyle="normal"
+                android:textSize="20sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+            <TextView
+                android:text="@{data.clientTimeHeard}"
+                android:textStyle="normal"
+                android:textSize="20sp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/center_content"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -53,7 +122,8 @@
                 android:layout_width="100dp"
                 android:layout_height="50dp"
                 android:hint="Frequency"
-                android:text="@{presenter.text}"
+                android:text="@{data.defaultTone}"
+                app:addTextChangedListener="@{data.watcher}"
                 />
 
             <TextView

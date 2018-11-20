@@ -29,6 +29,7 @@ import design.senior.bluetooth.calculators.AudioCalculator;
  */
 public class MyBluetoothService {
 
+    private BluetoothModel bluetoothModel;
     private boolean newChirp = false;
     private Recorder recorder;
     private AudioCalculator audioCalculator;
@@ -44,7 +45,7 @@ public class MyBluetoothService {
 
     private ConnectedThread connectedThread;
 
-    public MyBluetoothService(Handler handler, BluetoothSocket socket, boolean server){
+    public MyBluetoothService(Handler handler, BluetoothSocket socket, boolean server, BluetoothModel bluetoothModel){
         this.mHandler = handler;
         connectedThread = new ConnectedThread(socket);
 
@@ -59,6 +60,7 @@ public class MyBluetoothService {
                     AudioFormat.ENCODING_PCM_16BIT, (int)numSamples*2,
                     AudioTrack.MODE_STATIC);
             timer = new Timer();
+            this.bluetoothModel = bluetoothModel;
             generateTones(-1);
             setUpAudioTrack();
             recorder = new Recorder(getCallback());
@@ -66,6 +68,7 @@ public class MyBluetoothService {
             audioCalculator = new AudioCalculator();
             newChirp = false;
         }
+        bluetoothModel.setIsRunning(true);
 
         /**
          * Client and Server both need to manage their socket connection on a separate thread.
@@ -91,22 +94,23 @@ public class MyBluetoothService {
 //                double decibel = audioCalculator.getDecibel();
 
                     final double wave = audioCalculator.getFrequency();
-                    if(wave >= 3000){
+                    if(wave >= (bluetoothModel.getTone()-5)){
                         newChirp = false;
                         timeToHearMyOwnChirp = System.currentTimeMillis();
+                        connectedThread.sendServerHeard();
                     }
                 }
             }
         };
     }
 
-    public void closeSocket(){
-        connectedThread.cancel();
-    }
-
-    public void write(String text){
-        connectedThread.write();
-    }
+//    public void closeSocket(){
+//        connectedThread.cancel();
+//    }
+//
+//    public void write(String text){
+//        connectedThread.write();
+//    }
 
 
     // Defines several constants used when transmitting messages between the
@@ -190,12 +194,11 @@ public class MyBluetoothService {
                         public void run() {
                             if(run){
                                 /**
-                                 * This is where server writes data to client
+                                 * If user isn't changing the frequency text then carry on
                                  */
-//                                long time = System.currentTimeMillis();
-//                                String sendMe = time + "";
-//                                byte[] bytes = sendMe.getBytes();
-                                write();
+                                if(bluetoothModel.getIsRunning())
+                                    write();
+
                                 run = false;
                             }else
                                 run = true;
@@ -205,9 +208,22 @@ public class MyBluetoothService {
             });
         }
 
+        public void sendServerHeard(){
+            try{
+                if(timeToHearMyOwnChirp > 0){
+                    byte[] currentTime = ByteBuffer.allocate(Long.SIZE / Byte.SIZE).putLong(timeToHearMyOwnChirp).array();
+                    mmOutStream.write(currentTime);
+                    mmOutStream.flush();
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+
+
         /**
-         * The server's method, we should send decibel levels of the chirp over bluetooth, then on the client device, we can
-         * guage our distance by whether or not we hear the broadcasted soundFrequency
+         * The server's method, we could send frequency levels of the chirp over bluetooth, then on the client device, we can
+         * estimate our distance by whether or not we hear the broadcasted soundFrequency
          *
          */
         // Call this from the main activity to send data to the remote device.
@@ -216,14 +232,9 @@ public class MyBluetoothService {
                 return;
 
             try {
-                play(mmOutStream);
-//                Message writtenMsg = mHandler.obtainMessage(
-//                        MessageConstants.MESSAGE_WRITE, -1, -1, mmBuffer);
-//                writtenMsg.sendToTarget();
-//                mHandler.sendMessage(writtenMsg);
-            } catch (Exception e) {
-//                Log.e(TAG, "Error occurred when sending data", e);
+                new sendAudioAsync().execute(mmOutStream);
 
+            } catch (Exception e) {
                 /**
                  * Connection broke for some reason, notify activity
                  */
@@ -252,7 +263,7 @@ public class MyBluetoothService {
      */
 
 
-    private final double duration = 0.1; // seconds
+    private final double duration = 0.5; // seconds
 //    private final double duration = 1.5; // seconds
     /**
      *  		3950 = B7
@@ -260,11 +271,12 @@ public class MyBluetoothService {
      *  		5967 = F#8
      *  		7040 = A
      */
-    private int default_tone = 4100;
-    private int b_freq = 3950; // Hz
-    private int d_freq = 5925; // Hz
-    private int f_freq = 5967; // Hz
-    private int a_freq = 7040; // Hz
+//    private int default_tone = 4100;
+//    private int default_tone = 16000;
+//    private int b_freq = 3950; // Hz
+//    private int d_freq = 5925; // Hz
+//    private int f_freq = 5967; // Hz
+//    private int a_freq = 7040; // Hz
 
     /**
      * Can generate any tone less than sampleRate/2 Hz
@@ -282,15 +294,11 @@ public class MyBluetoothService {
 
     private AudioTrack audioTrack;
 
-    private boolean isPlaying = false;
-
-
-
-    public class sendAudioAsync extends AsyncTask<Void, Void, Void> {
+    public class sendAudioAsync extends AsyncTask<OutputStream, Void, Void> {
         @Override
-        protected Void doInBackground(Void... voids) {
-//            generateTone();
-//            play();
+        protected Void doInBackground(OutputStream... streams) {
+            OutputStream stream = streams[0];
+            play(stream);
             return null;
         }
 
@@ -317,19 +325,19 @@ public class MyBluetoothService {
         int freqOfTone = 0;
         switch (tone){
             case 0:
-                freqOfTone = b_freq;
+                freqOfTone = bluetoothModel.getB_freq();
                 break;
             case 1:
-                freqOfTone = d_freq;
+                freqOfTone = bluetoothModel.getD_freq();
                 break;
             case 2:
-                freqOfTone = f_freq;
+                freqOfTone = bluetoothModel.getF_freq();
                 break;
             case 3:
-                freqOfTone = a_freq;
+                freqOfTone = bluetoothModel.getA_freq();
                 break;
             default:
-                freqOfTone = default_tone;
+                freqOfTone = bluetoothModel.getTone();
                 break;
 
         }
@@ -417,8 +425,14 @@ public class MyBluetoothService {
             audioTrack.stop();
             if(tone != -1)
                 setUpAudioTrack();
-            else
-                audioTrack.reloadStaticData();
+            else{
+//                audioTrack.reloadStaticData();
+                /**
+                 * in case the user adjusted frequency on phone
+                 */
+                  generateTones(-1);
+                  audioTrack.write(b, 0, b.length);
+            }
 //            byte[] time = Longs.toByteArray(System.currentTimeMillis());
             newChirp = true;
             timeToHearMyOwnChirp = -1;
@@ -427,24 +441,6 @@ public class MyBluetoothService {
             outputStream.flush();
             audioTrack.setPlaybackHeadPosition(0);
             audioTrack.play();
-
-            /**
-             * Wait for sound to finish
-             */
-            mHandler.postDelayed(new Runnable() {
-                @Override
-                public void run() {
-                    try{
-                        if(timeToHearMyOwnChirp > 0){
-                            byte[] currentTime = ByteBuffer.allocate(Long.SIZE / Byte.SIZE).putLong(timeToHearMyOwnChirp).array();
-                            outputStream.write(currentTime);
-                            outputStream.flush();
-                        }
-                    }catch (Exception e){
-                        e.printStackTrace();
-                    }
-                }
-            }, 250);
 
         }
         catch (Exception e){

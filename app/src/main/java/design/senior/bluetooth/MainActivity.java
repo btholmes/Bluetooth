@@ -19,6 +19,10 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.databinding.DataBindingUtil;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -60,8 +64,10 @@ import design.senior.bluetooth.databinding.ActivityMainBinding;
  * client does all reading, while server does all writing over socket. Everytime the client receives a
  * message, it closes the socket. Then server starts device discoverability again, and client starts discovery.
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
+    private SensorManager sensorManager;
+    private Sensor temperature;
 
     private static final String PREFS_NAME = "We have one shared pref... and it lives here";
     private static final String REALM_REFRESH_DATE = "string, stores last time Realm was completely deleted from phone";
@@ -74,7 +80,8 @@ public class MainActivity extends AppCompatActivity {
     /**
      * 128 bit format
      */
-    private UUID SERVICE_ID = UUID.fromString("795090c7-420d-4048-a24e-18e60180e23c");
+//    private UUID SPOTIFY_? = UUID.fromString("795090c7-420d-4048-a24e-18e60180e23c");
+    private UUID SERVICE_ID = UUID.fromString("eceada6c-ec91-11e8-8eb2-f2801f1b9fd1");
 
     private Context ctx;
     private MainViewModel viewModel;
@@ -206,6 +213,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         this.ctx = this;
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         checkRealmDataOld();
 
 
@@ -389,7 +397,8 @@ public class MainActivity extends AppCompatActivity {
              */
             @Override
             public void onBufferAvailable(byte[] buffer) {
-                if (soundTimeReceived == -1 && firstReceived && bluetoothMessageTimeReceived != -1) {
+//                if (soundTimeReceived == -1 && secondReceived && bluetoothMessageTimeReceived != -1) {
+                if (soundTimeReceived == -1 &&  bluetoothMessageTimeReceived != -1) {
 //                    if (startCalculationTime == -1)
 //                        startCalculationTime = System.currentTimeMillis();
 
@@ -398,20 +407,30 @@ public class MainActivity extends AppCompatActivity {
 //                double decibel = audioCalculator.getDecibel();
                     final double wave = audioCalculator.getFrequency();
 //                if(areEqual(wave, frequency)){
-                    if (wave >= 3000) {
-//                        if (startCalculationTime > 0) {
+                    if (wave >= (bluetoothModel.getTone() - 5)) {
+
+                        /**
+                         * Means server heard chirp and notified client via bluetooth before client
+                         * ever even recognized the frequency
+                         */
+                        if (secondReceived) {
                             chirpHeard = true;
                             soundTimeReceived = System.currentTimeMillis();
-//                        /**
-//                         * If this delay is greater than soundPlaybackDelay, then chirp was missed
-//                         */
-//                            elapsedTime = (soundTimeReceived - startCalculationTime);
-                            elapsedTime = (soundTimeReceived - bluetoothMessageTimeReceived);
-                            bluetoothModel.setElapsedCalculationTime(elapsedTime);
-//                            setTimeDilation(elapsedTime);
-//                        }
-
-//                    bluetoothModel.setFreqOfTone((int)wave);
+                            bluetoothModel.setClientTimeHeard(soundTimeReceived);
+                            if (bluetoothModel.getDelay() >= 0 && bluetoothModel.getDistance() >= 0) {
+                                /**
+                                 * Chirp was heard
+                                 */
+                                bluetoothModel.setBluetoothMessage(bluetoothModel.getDelay() + " mili seconds");
+                                bluetoothModel.setTimeDilationDistance(bluetoothModel.getDistance());
+                            }
+                        }else{
+                            /**
+                             * Means client heard chirp before server heard chirp, so mistrial
+                             */
+                            badData();
+                            bluetoothMessageTimeReceived = -1;
+                        }
                     }
 
                 }
@@ -539,12 +558,33 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        sensorManager.unregisterListener(this);
     }
 
     @Override
     protected void onResume() {
         super.onResume();
         getPermissions();
+        registerListeners();
+    }
+
+    private void registerListeners(){
+        temperature = sensorManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
+        if(temperature != null){
+            sensorManager.registerListener(this, temperature, SensorManager.SENSOR_DELAY_GAME, SensorManager.SENSOR_DELAY_GAME);
+        }
+    }
+
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if(event.sensor.getType() == Sensor.TYPE_AMBIENT_TEMPERATURE){
+            bluetoothModel.setTemperature(event.values[0]);
+        }
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
     }
 
     /**
@@ -771,12 +811,13 @@ public class MainActivity extends AppCompatActivity {
      * @param socket
      */
     private void manageMyConnectedSocket(BluetoothSocket socket, boolean server){
-        service = new MyBluetoothService(mHandler, socket, server);
+        service = new MyBluetoothService(mHandler, socket, server, bluetoothModel);
     }
 
     private long soundPlaybackDelay = -1;
     private long playDelay = -1;
     private boolean firstReceived = false;
+    private boolean secondReceived = false;
     private long firstMessageReceivedTime = -1;
 
     Handler mHandler = new Handler(Looper.getMainLooper()){
@@ -815,17 +856,16 @@ public class MainActivity extends AppCompatActivity {
                      *
                      */
                     if(firstReceived){
+                        secondReceived = true;
                         byte[] array = (byte[]) msg.obj;
 //                        totalDelay = Longs.fromByteArray(array) - firstMessageReceivedTime;
                         long secondReceived = ByteBuffer.wrap(array).getLong();
+                        bluetoothModel.setServerTimeHeard(System.currentTimeMillis());
                         playDelay = secondReceived - firstMessageReceivedTime;
                         bluetoothModel.setPlayDelay(playDelay);
+
                         if(chirpHeard){
-                            /**
-                             * Chirp was heard before the 2nd bluetooth message
-                             */
-                            bluetoothModel.setBluetoothMessage(bluetoothModel.getDelay() + " mili seconds");
-                            bluetoothModel.setTimeDilationDistance(bluetoothModel.getDistance());
+
                             success();
                         }else{
                             /**
@@ -856,6 +896,7 @@ public class MainActivity extends AppCompatActivity {
                         bluetoothMessageTimeReceived = -1;
                         firstReceived = false;
                     }else{
+                        firstReceived = true;
                         byte[] array = (byte[]) msg.obj;
 //                        firstMessageReceivedTime = Longs.fromByteArray(array);
                         firstMessageReceivedTime = ByteBuffer.wrap(array).getLong();
@@ -866,10 +907,12 @@ public class MainActivity extends AppCompatActivity {
                         playDelay = -1;
 //                        bluetoothModel.setBluetoothMessage("-1");
 //                        bluetoothModel.setTimeDilationDistance(-1);
+                        bluetoothModel.setServerTimeHeard( -1);
+                        bluetoothModel.setClientTimeHeard(-1);
                         bluetoothModel.setElapsedCalculationTime(-1);
                         bluetoothModel.setPlayDelay(-1);
                         chirpHeard = false;
-                        firstReceived = true;
+                        secondReceived = false;
                     }
                     break;
                 //write

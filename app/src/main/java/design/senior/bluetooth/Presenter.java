@@ -1,6 +1,8 @@
 package design.senior.bluetooth;
 
 import android.content.Context;
+import android.databinding.BaseObservable;
+import android.databinding.Bindable;
 import android.databinding.ObservableField;
 import android.renderscript.ScriptGroup;
 import android.text.Editable;
@@ -12,31 +14,6 @@ import android.widget.EditText;
 public class Presenter {
 
 
-    public ObservableField<String> text = new ObservableField<>();
-
-    public TextWatcher watcher = new TextWatcher() {
-        @Override
-        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-
-        }
-
-        @Override
-        public void onTextChanged(CharSequence s, int start, int before, int count) {
-            String newFreq = s.toString();
-            text.set(s.toString());
-//            model.setFreqOfTone(newFreq);
-        }
-
-        @Override
-        public void afterTextChanged(Editable s) {
-            String newFreq = s.toString();
-            text.set(s.toString());
-        }
-    };
-
-    public Presenter(){
-
-    }
 
 
     /**
@@ -56,4 +33,11 @@ public class Presenter {
         ((InputMethodManager)view.getContext().getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(view.getWindowToken(), 0);
 
     }
+
+    public void test(){
+//        View v = new View(this);
+//        ((EditText)(v)).addTextChangedListener(watcher);
+
+    }
+
 }
