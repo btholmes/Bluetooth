@@ -4,11 +4,152 @@ import android.content.Context;
 import android.databinding.BaseObservable;
 import android.databinding.Bindable;
 import android.databinding.ObservableField;
+import android.support.v7.widget.SwitchCompat;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.View;
+import android.widget.CompoundButton;
+import android.widget.RadioGroup;
 
 public class BluetoothModel extends BaseObservable {
+
+    /**
+     * Default duration is 0.03 m/s
+     */
+    public static double duration = 0.03;
+    public static double defaultTone = 8100.0;
+    public static int chirpDelay = 1000;
+    public static boolean chirpWindow = false;
+
+
+    public void setChirpWindow(boolean window){
+        this.chirpWindow = window;
+        notifyPropertyChanged(BR.chirpWindow);
+    }
+
+    @Bindable
+    public boolean getChirpWindow(){
+        return this.chirpWindow;
+    }
+
+    @Bindable
+    public String getChirpDelay(){
+        return chirpDelay + "";
+    }
+
+    public void setChirpDelay(int delay){
+        this.chirpDelay = delay;
+        notifyPropertyChanged(BR.chirpDelay);
+    }
+
+    private TextWatcher chirpWatcher = new TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+        }
+
+        @Override
+        public void onTextChanged(CharSequence s, int start, int before, int count) {
+        }
+
+        @Override
+        public void afterTextChanged(Editable s) {
+            try{
+                String string = s.toString();
+                Integer newDelay = Integer.parseInt(string);
+                setChirpDelay(newDelay);
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+    };
+
+    @Bindable
+    public TextWatcher getChirpWatcher(){
+        return this.chirpWatcher;
+    }
+
+    public double getTone(){
+        return this.defaultTone;
+    }
+
+    @Bindable
+    public String getDefaultTone() {
+        return String.format("%.1f", defaultTone);
+    }
+
+    public void setDefaultTone(double defaultTone) {
+        this.defaultTone = defaultTone;
+        notifyPropertyChanged(BR.defaultTone);
+    }
+
+    private TextWatcher durationWatcher = new TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+        }
+
+        @Override
+        public void onTextChanged(CharSequence s, int start, int before, int count) {
+        }
+
+        @Override
+        public void afterTextChanged(Editable s) {
+            try{
+                String string = s.toString();
+                Double newDuration = Double.parseDouble(string);
+                setDuration(newDuration);
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+    };
+
+    public void setDuration(double duration){
+        this.duration = duration;
+        notifyPropertyChanged(BR.duration);
+    }
+
+    @Bindable
+    public String getDuration() {
+        return String.format("%.2f", duration);
+    }
+
+    public TextWatcher watcher = new TextWatcher() {
+        @Override
+        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
+
+        }
+
+        @Override
+        public void onTextChanged(CharSequence s, int start, int before, int count) {
+        }
+
+        @Override
+        public void afterTextChanged(Editable s) {
+            try{
+                double freq = 0;
+                String newFreq = s.toString();
+                freq = Double.parseDouble(newFreq);
+                if(freq >= 1000){
+                    setDefaultTone(freq);
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+    };
+
+
+    @Bindable
+    public TextWatcher getWatcher() {
+        return this.watcher;
+    }
+
+    @Bindable
+    public TextWatcher getDurationWatcher() {
+        return durationWatcher;
+    }
 
     private boolean changingFrequency = false;
     private String bluetoothMessage;
@@ -54,38 +195,6 @@ public class BluetoothModel extends BaseObservable {
         phone1Distance = -1;
     }
 
-
-
-    public TextWatcher watcher = new TextWatcher() {
-        @Override
-        public void beforeTextChanged(CharSequence s, int start, int count, int after) {
-
-        }
-
-        @Override
-        public void onTextChanged(CharSequence s, int start, int before, int count) {
-        }
-
-        @Override
-        public void afterTextChanged(Editable s) {
-            try{
-                int freq = 0;
-                String newFreq = s.toString();
-                freq = Integer.parseInt(newFreq);
-                if(freq >= 1000){
-                    setDefaultTone(freq);
-                }
-            }catch (Exception e){
-                e.printStackTrace();
-            }
-        }
-    };
-
-
-    @Bindable
-    public TextWatcher getWatcher() {
-        return this.watcher;
-    }
 
 
     public void setPhone1(String hardware, String name, int rssi){
@@ -385,55 +494,26 @@ public class BluetoothModel extends BaseObservable {
         }
     }
 
-    private int defaultTone = 8100;
-    private int b_freq = 3950; // Hz
-    private int d_freq = 5925; // Hz
-    private int f_freq = 5967; // Hz
-    private int a_freq = 7040; // Hz
 
-    public int getTone(){
-        return this.defaultTone;
+    private boolean exactComparison = false;
+
+    public void setExactComparison(boolean exactComparison){
+        this.exactComparison = exactComparison;
     }
+
+    public boolean getExactComparison(){
+        return this.exactComparison;
+    }
+
+    private SwitchCompat.OnCheckedChangeListener checkedChangeListener = new SwitchCompat.OnCheckedChangeListener(){
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            setExactComparison(isChecked);
+        }
+    };
 
     @Bindable
-    public String getDefaultTone() {
-        return defaultTone + " ";
-    }
-
-    public void setDefaultTone(int defaultTone) {
-        this.defaultTone = defaultTone;
-        notifyPropertyChanged(BR.defaultTone);
-    }
-
-    public int getB_freq() {
-        return b_freq;
-    }
-
-    public void setB_freq(int b_freq) {
-        this.b_freq = b_freq;
-    }
-
-    public int getD_freq() {
-        return d_freq;
-    }
-
-    public void setD_freq(int d_freq) {
-        this.d_freq = d_freq;
-    }
-
-    public int getF_freq() {
-        return f_freq;
-    }
-
-    public void setF_freq(int f_freq) {
-        this.f_freq = f_freq;
-    }
-
-    public int getA_freq() {
-        return a_freq;
-    }
-
-    public void setA_freq(int a_freq) {
-        this.a_freq = a_freq;
+    public SwitchCompat.OnCheckedChangeListener getCheckedChangeListener(){
+        return this.checkedChangeListener;
     }
 }

@@ -364,26 +364,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //        return ((frequency/freqOfTone)*speedOfSound)-speedOfSound;
 //    }
 
-    /**
-     * Two waves are equal as long as they are no greater than 1 hz apart
-     * @param start
-     * @param end
-     * @return
-     */
-    private boolean areEqual(double start, double end){
-        double threshold = 1.0;
-        double diff = start-end;
-        if(end > start)
-            diff = end-start;
-        if(diff < threshold)
-            return true;
-
-        return false;
-    }
 
     private long startCalculationTime = -1;
-    long elapsedTime;
-    private int frequency = 14100;
     private AudioCalculator audioCalculator = new AudioCalculator();
 
     private Callback getCallback(){
@@ -406,8 +388,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 //                int amplitude = audioCalculator.getAmplitude();
 //                double decibel = audioCalculator.getDecibel();
                     final double wave = audioCalculator.getFrequency();
-//                if(areEqual(wave, frequency)){
-                    if (wave >= (bluetoothModel.getTone() - 5)) {
+                    boolean condition;
+                    if(bluetoothModel.getExactComparison())
+                        condition = wave >= (bluetoothModel.getTone()-5) && wave <= (bluetoothModel.getTone() + 5);
+                    else
+                        condition = wave >= (bluetoothModel.getTone()-5);
+
+                    if (condition) {
 
                         /**
                          * Means server heard chirp and notified client via bluetooth before client
@@ -905,14 +892,26 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         soundPlaybackDelay = -1;
                         startCalculationTime = -1;
                         playDelay = -1;
-//                        bluetoothModel.setBluetoothMessage("-1");
-//                        bluetoothModel.setTimeDilationDistance(-1);
-                        bluetoothModel.setServerTimeHeard( -1);
-                        bluetoothModel.setClientTimeHeard(-1);
-                        bluetoothModel.setElapsedCalculationTime(-1);
-                        bluetoothModel.setPlayDelay(-1);
                         chirpHeard = false;
                         secondReceived = false;
+
+                        /** Timed out handler
+                         *
+                         * Total process should never take more than 400ms/ that includes starting the speaker
+                         * and everything. If this time passes, and nothing was found or heard, it was missed
+                         */
+                        defaultHandler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                bluetoothMessageTimeReceived = -1;
+                                firstReceived = false;
+                                secondReceived = false;
+                                bluetoothModel.setServerTimeHeard( -1);
+                                bluetoothModel.setClientTimeHeard(-1);
+                                bluetoothModel.setElapsedCalculationTime(-1);
+                                bluetoothModel.setPlayDelay(-1);
+                            }
+                        }, 400);
                     }
                     break;
                 //write

@@ -59,25 +59,29 @@
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
+            android:orientation="horizontal"
             android:layout_above="@id/times_received"
             android:layout_centerInParent="true"
-            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
             >
 
-            <TextView
-                android:text="@{data.temperature}"
-                android:textStyle="normal"
+            <EditText
+                android:layout_width="150dp"
+                android:layout_height="50dp"
+                android:layout_margin="15dp"
                 android:textSize="20sp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:textStyle="normal"
+                android:text="@{data.duration}"
+                app:addTextChangedListener="@{data.durationWatcher}"
+                />
 
             <TextView
-                android:text="@{data.speedOfSoundInAir}"
-                android:textStyle="normal"
-                android:textSize="20sp"
+                android:text="duration (s)"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                />
 
         </LinearLayout>
 
@@ -119,7 +123,7 @@
             >
 
             <EditText
-                android:layout_width="100dp"
+                android:layout_width="150dp"
                 android:layout_height="50dp"
                 android:hint="Frequency"
                 android:text="@{data.defaultTone}"
@@ -132,6 +136,14 @@
                 android:layout_height="wrap_content"
                 android:textSize="20sp"
                 android:textStyle="normal"
+                />
+
+            <android.support.v7.widget.SwitchCompat
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="50dp"
+                android:checked="false"
+                app:setOnCheckedChangeListener="@{data.checkedChangeListener}"
                 />
 
         </LinearLayout>
@@ -186,60 +198,116 @@
             android:textSize="20sp"
             />
 
+
+        <TextView
+            android:id="@+id/blinking_box"
+            android:layout_above="@+id/chirp_delay_holder"
+            android:layout_centerInParent="true"
+            android:textStyle="normal"
+            android:textSize="20sp"
+            android:layout_width="150dp"
+            android:layout_height="50dp"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
+            android:background="@{data.chirpWindow == true ? @color/colorPrimary : @color/white}"
+
+            />
+
         <LinearLayout
-            android:id="@+id/phone1"
+            android:id="@+id/chirp_delay_holder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
             android:layout_alignParentBottom="true"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:layout_marginBottom="50dp"
+            android:layout_centerInParent="true"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
             >
 
+            <EditText
+                android:layout_width="150dp"
+                android:layout_height="50dp"
+                android:layout_margin="15dp"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                android:text="@{data.chirpDelay}"
+                app:addTextChangedListener="@{data.chirpWatcher}"
+                />
 
             <TextView
-                android:text="Phone1 (Samsung) : "
-                android:textStyle="bold"
-                android:layout_margin="10dp"
+                android:text="chirp delay (ms)"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-
-
-            <TextView
-                android:text="@{data.rSSI1}"
-                android:layout_margin="10dp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-
-            <TextView
-                android:text="@{data.phone1Distance}"
-                android:layout_margin="10dp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                />
 
         </LinearLayout>
 
         <LinearLayout
-            android:layout_above="@+id/phone1"
+            android:id="@+id/client_side_phone_rrsi_holder"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
+            android:layout_alignParentBottom="true"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
             >
 
-
-            <TextView
-                android:text="Phone2 (Nexus) : "
-                android:textStyle="bold"
-                android:layout_margin="10dp"
+            <LinearLayout
+                android:layout_above="@+id/phone1"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                >
 
 
-            <TextView
-                android:text="@{data.rSSI2}"
-                android:layout_margin="10dp"
+                <TextView
+                    android:text="Phone2 (Nexus) : "
+                    android:textStyle="bold"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+
+                <TextView
+                    android:text="@{data.rSSI2}"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/phone1"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                >
+
+
+                <TextView
+                    android:text="Phone1 (Samsung) : "
+                    android:textStyle="bold"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+
+                <TextView
+                    android:text="@{data.rSSI1}"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:text="@{data.phone1Distance}"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
 
         </LinearLayout>
+
 
     </RelativeLayout>
 
