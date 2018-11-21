@@ -2,6 +2,9 @@ package design.senior.bluetooth.calculators;
 
 import java.util.Arrays;
 
+/**
+ * Found this code online
+ */
 public class FrequencyCalculator {
 
     private RealDoubleFFT spectrumAmpFFT;

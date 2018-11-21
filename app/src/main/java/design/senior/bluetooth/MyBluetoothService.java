@@ -1,6 +1,19 @@
 package design.senior.bluetooth;
 
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattServer;
+import android.bluetooth.BluetoothGattServerCallback;
+import android.bluetooth.BluetoothGattService;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSocket;
+import android.bluetooth.le.AdvertiseCallback;
+import android.bluetooth.le.AdvertiseData;
+import android.bluetooth.le.AdvertiseSettings;
+import android.bluetooth.le.BluetoothLeAdvertiser;
+import android.content.Context;
 import android.icu.util.Output;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -9,6 +22,7 @@ import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.os.ParcelUuid;
 import android.util.Log;
 
 import com.google.common.primitives.Longs;
@@ -19,6 +33,7 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.UUID;
 
 import design.senior.bluetooth.SoundRecorder.Callback;
 import design.senior.bluetooth.SoundRecorder.Recorder;
@@ -32,6 +47,12 @@ public class MyBluetoothService {
     private final byte[] genericMessage = ByteBuffer.allocate(Long.SIZE / Byte.SIZE).putLong(123l).array();
     private long timeToHearMyOwnChirp = -1;
 
+    private UUID serviceID;
+    private BluetoothGattServer bluetoothGattServer;
+    private BluetoothLeAdvertiser bluetoothLeAdvertiser;
+
+    private BluetoothGatt bluetoothGatt;
+    private BluetoothDevice bluetoothDevice;
     private BluetoothModel bluetoothModel;
     private boolean newChirp = false;
     private Recorder recorder;
@@ -44,9 +65,15 @@ public class MyBluetoothService {
 
     private ConnectedThread connectedThread;
 
-    public MyBluetoothService(Handler handler, BluetoothSocket socket, boolean server, BluetoothModel bluetoothModel){
+    public MyBluetoothService(Handler handler, BluetoothSocket socket, boolean server,
+                              BluetoothModel bluetoothModel, BluetoothDevice bluetoothDevice, Context ctx,
+                              BluetoothManager bluetoothManager, UUID serviceID){
+
+        this.serviceID = serviceID;
         this.mHandler = handler;
+        this.bluetoothDevice = bluetoothDevice;
         connectedThread = new ConnectedThread(socket);
+
 
         this.server = server;
         /**
@@ -59,7 +86,16 @@ public class MyBluetoothService {
             recorder.start();
             audioCalculator = new AudioCalculator();
             newChirp = false;
+
+            bluetoothGattServer = bluetoothManager.openGattServer(ctx, gattServerCallback);
+            bluetoothLeAdvertiser = bluetoothManager.getAdapter().getBluetoothLeAdvertiser();
+            setupServer();
+            startAdvertising();
+        }else{
+            bluetoothGatt = bluetoothDevice.connectGatt(ctx, true, gattClientCallback);
+            bluetoothGatt.readRemoteRssi();
         }
+
         bluetoothModel.setIsRunning(true);
 
         /**
@@ -67,6 +103,45 @@ public class MyBluetoothService {
          * Client reads, server writes
          */
         connectedThread.start();
+    }
+
+    private final BluetoothGattCallback gattClientCallback = new BluetoothGattCallback() {
+        @Override
+        public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+            super.onConnectionStateChange(gatt, status, newState);
+        }
+
+        @Override
+        public void onReadRemoteRssi(BluetoothGatt gatt, int rssi, int status) {
+            super.onReadRemoteRssi(gatt, rssi, status);
+            bluetoothModel.setrSSI1(rssi);
+            bluetoothGatt.readRemoteRssi();
+        }
+    };
+
+    private final BluetoothGattServerCallback gattServerCallback = new BluetoothGattServerCallback() {
+
+        @Override
+        public void onConnectionStateChange(BluetoothDevice device, int status, int newState) {
+            super.onConnectionStateChange(device, status, newState);
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                bluetoothDevice = device;
+            } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                bluetoothDevice = null;
+            }
+        }
+    };
+
+    private void setupServer() {
+        BluetoothGattService service = new BluetoothGattService(serviceID,
+                BluetoothGattService.SERVICE_TYPE_PRIMARY);
+        bluetoothGattServer.addService(service);
+    }
+
+    private void stopServer() {
+        if (bluetoothGattServer != null) {
+            bluetoothGattServer.close();
+        }
     }
 
     public void setNewChirp(boolean newChirp){
@@ -152,7 +227,7 @@ public class MyBluetoothService {
             try {
                 tmpOut = socket.getOutputStream();
             } catch (IOException e) {
-                Log.e(TAG, "Error occurred when creating output stream", e);
+                 Log.e(TAG, "Error occurred when creating output stream", e);
             }
 
             mmInStream = tmpIn;
@@ -234,7 +309,14 @@ public class MyBluetoothService {
                 bluetoothModel.setChirpWindow(true);
                 newChirp = true;
                 timeToHearMyOwnChirp = -1;
-                new SendAudioAsync().execute(bluetoothModel.getTone(), bluetoothModel.duration);
+
+
+                /**
+                 * If not using separate speaker, then no need to waste resources on this call
+                 */
+                if(bluetoothModel.usePhoneSpeaker){
+                    new SendAudioAsync().execute(bluetoothModel.getTone(), bluetoothModel.duration);
+                }
 
 
                 /**Timed out handler
@@ -246,9 +328,8 @@ public class MyBluetoothService {
                     public void run() {
                         newChirp = false;
                         bluetoothModel.setChirpWindow(false);
-
                     }
-                }, 400);
+                }, bluetoothModel.windowSize);
 
             } catch (Exception e) {
                 /**
@@ -268,11 +349,57 @@ public class MyBluetoothService {
         public void cancel() {
             try {
                 mmSocket.close();
+                if(bluetoothGatt != null){
+                    bluetoothGatt.disconnect();
+                    bluetoothGatt.close();
+                }
+                if(server)
+                    stopServer();
             } catch (IOException e) {
                 Log.e(TAG, "Could not close the connect socket", e);
             }
         }
     }
 
+
+    /**
+     * For the server to start and stop advertising
+     */
+    private void startAdvertising() {
+        if (bluetoothLeAdvertiser == null) {
+            return;
+        }
+
+        AdvertiseSettings settings = new AdvertiseSettings.Builder().setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_BALANCED)
+                .setConnectable(true)
+                .setTimeout(0)
+                .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_LOW)
+                .build();
+
+        ParcelUuid parcelUuid = new ParcelUuid(serviceID);
+        AdvertiseData data = new AdvertiseData.Builder().setIncludeDeviceName(true)
+                .addServiceUuid(parcelUuid)
+                .build();
+
+        bluetoothLeAdvertiser.startAdvertising(settings, data, mAdvertiseCallback);
+    }
+
+    private void stopAdvertising() {
+        if (bluetoothLeAdvertiser != null) {
+            bluetoothLeAdvertiser.stopAdvertising(mAdvertiseCallback);
+        }
+    }
+
+    private AdvertiseCallback mAdvertiseCallback = new AdvertiseCallback() {
+        @Override
+        public void onStartSuccess(AdvertiseSettings settingsInEffect) {
+            Log.e("Success", "Peripheral advertising started.");
+        }
+
+        @Override
+        public void onStartFailure(int errorCode) {
+            Log.e("failed", "Peripheral advertising failed.");
+        }
+    };
 
 }

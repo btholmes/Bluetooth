@@ -7,7 +7,7 @@ import android.os.Process;
 import android.util.Log;
 
 /**
- * This is a class I found online
+ * Found this code online
  * originally from http://marblemice.blogspot.com/2010/04/generate-and-play-tone-in-android.html
  * and modified by Steve Pomeroy <steve@staticfree.info>
  */

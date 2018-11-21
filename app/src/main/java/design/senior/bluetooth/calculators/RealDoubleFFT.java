@@ -1,5 +1,8 @@
 package design.senior.bluetooth.calculators;
 
+/**
+ * Found this code online
+ */
 public class RealDoubleFFT {
 
     public double norm_factor;

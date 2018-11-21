@@ -7,6 +7,9 @@ import android.arch.lifecycle.ViewModelProvider;
 import android.arch.lifecycle.ViewModelProviders;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.le.AdvertiseCallback;
 import android.bluetooth.le.AdvertiseData;
@@ -66,6 +69,9 @@ import design.senior.bluetooth.databinding.ActivityMainBinding;
  */
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
 
+    private boolean scanning = false;
+    private BluetoothDevice bluetoothDevice;
+    private BluetoothGatt bluetoothGatt;
     private SensorManager sensorManager;
     private Sensor temperature;
 
@@ -86,7 +92,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private Context ctx;
     private MainViewModel viewModel;
     private BluetoothAdapter bluetoothAdapter;
-    private BluetoothLeAdvertiser bluetoothLeAdvertiser;
 
     private int REQUEST_ENABLE_BT = 1111;
     private int REQUEST_LOCATION = 2222;
@@ -100,6 +105,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private BluetoothModel bluetoothModel;
     private Presenter presenter;
 
+    private BluetoothManager bluetoothManager;
     private MyBluetoothService service;
 
     /**
@@ -126,6 +132,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 if(deviceName != null){
                     if(deviceName.equalsIgnoreCase("Phone2") || deviceName.equalsIgnoreCase("Phone1") ){
+                        bluetoothDevice = device;
                         /**
                          * Required to make a bluetooth connection with a device
                          */
@@ -133,7 +140,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         int  rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
 
                         if(deviceName.equalsIgnoreCase("Phone1") ){
-                            timer.cancel();
+//                            timer.cancel();
+                            /**
+                             * Just cancel discovery immediately after finding my device, because that is the only device
+                             * I need right now
+                             */
+                            scanning = false;
+                            bluetoothAdapter.cancelDiscovery();
                             phone1Found = true;
                             bluetoothModel.setPhone1(deviceHardwareAddress, deviceName, rssi);
 
@@ -141,7 +154,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                              * Iam only connecting my phone to 1 device at a time
                              */
                             if(!MyPhonesIsConnected)
-                                connectToDevice(device);
+                                connectToDevice();
+
                         }else{
                             bluetoothModel.setPhone2(deviceHardwareAddress, deviceName, rssi);
                         }
@@ -155,7 +169,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         }
     };
-
 
 
     private final BroadcastReceiver advertisingReceiver = new BroadcastReceiver() {
@@ -217,6 +230,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         checkRealmDataOld();
 
 
+        this.bluetoothManager = (BluetoothManager)getSystemService(BLUETOOTH_SERVICE);
         this.bluetoothModel = new BluetoothModel();
         this.presenter = new Presenter();
         mainHandler = new Handler(Looper.getMainLooper());
@@ -316,8 +330,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         bluetoothModel.setIsMyPhone(true);
         recorder = new Recorder(getCallback());
         recorder.start();
-        bluetoothAdapter.startDiscovery();
-        startTimer();
+//        startTimer();
+        startDiscovery();
     }
 
 //    private float metersPerNanoSecond = .000000343f;
@@ -395,7 +409,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         condition = wave >= (bluetoothModel.getTone()-5);
 
                     if (condition) {
-
+                        bluetoothModel.setHeardChirp(true);
                         /**
                          * Means server heard chirp and notified client via bluetooth before client
                          * ever even recognized the frequency
@@ -425,6 +439,16 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         };
     }
 
+    private void startDiscovery(){
+        scanning = true;
+        if(!phone1Found){
+            bluetoothModel.setPhone1Distance(-1);
+        }
+        phone1Found = false;
+        bluetoothModel.setNewSearch();
+        bluetoothAdapter.startDiscovery();
+    }
+
     private void startTimer(){
         timer = new Timer();
         mainHandler.post(new Runnable() {
@@ -434,13 +458,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                     @Override
                     public void run() {
                         if(run){
-                            if(!phone1Found){
-                                bluetoothModel.setPhone1Distance(-1);
+                            if(!scanning){
+                                scanning = true;
+                                if(!phone1Found){
+                                    bluetoothModel.setPhone1Distance(-1);
+                                }
+                                phone1Found = false;
+                                bluetoothModel.setNewSearch();
+                                bluetoothAdapter.startDiscovery();
+                                run = false;
                             }
-                            phone1Found = false;
-                            bluetoothModel.setNewSearch();
-                            bluetoothAdapter.startDiscovery();
-                            run = false;
+
                         }else
                             run = true;
                     }
@@ -551,6 +579,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     protected void onResume() {
         super.onResume();
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
+            Toast.makeText(this, "Device does not support Bluetooth " , Toast.LENGTH_LONG);
+        }
         getPermissions();
         registerListeners();
     }
@@ -593,10 +624,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      * RFCOMM allows only 1 connected client at a time. In this case, the server is the device
      * ThisIsMe, and the clients, are the other devices.
      *
-     * @param device
      */
-    private void connectToDevice(BluetoothDevice device){
-        new ConnectThread(device).run();
+    private void connectToDevice(){
+        new ConnectThread(bluetoothDevice).run();
     }
 
     private void startAcceptThread(){
@@ -691,7 +721,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 if (socket != null) {
                     // A connection was accepted. Perform work associated with
                     // the connection in a separate thread.
-                    manageMyConnectedSocket(socket, true);
+                    manageMyConnectedSocket(socket, true, bluetoothDevice, bluetoothManager, SERVICE_ID);
                     bluetoothModel.setBluetoothMessage("Connection accepted");
                     try{
                         /**
@@ -745,6 +775,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         public void run() {
             // Cancel discovery because it otherwise slows down the connection.
             bluetoothAdapter.cancelDiscovery();
+            scanning = false;
 
             try {
                 // Connect to the remote device through the socket. This call blocks
@@ -759,10 +790,11 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                      * a connection is made
                      */
                     MyPhonesIsConnected = false;
-                    startTimer();
                 } catch (IOException closeException) {
                     Log.e("Client", "Could not close the client socket", closeException);
                 }
+
+                startDiscovery();
                 return;
             }
 
@@ -770,7 +802,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             // the connection in a separate thread.
             MyPhonesIsConnected = true;
             bluetoothModel.setBluetoothMessage("Connected to device");
-            manageMyConnectedSocket(mmSocket, false);
+            manageMyConnectedSocket(mmSocket, false, bluetoothDevice, bluetoothManager, SERVICE_ID);
         }
 
         // Closes the client socket and causes the thread to finish.
@@ -797,8 +829,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
      *
      * @param socket
      */
-    private void manageMyConnectedSocket(BluetoothSocket socket, boolean server){
-        service = new MyBluetoothService(mHandler, socket, server, bluetoothModel);
+    private void manageMyConnectedSocket(BluetoothSocket socket, boolean server, BluetoothDevice bluetoothDevice,
+                                         BluetoothManager bluetoothManager, UUID serviceId){
+        service = new MyBluetoothService(mHandler, socket, server, bluetoothModel, bluetoothDevice,
+                this, bluetoothManager, serviceId);
     }
 
     private long soundPlaybackDelay = -1;
@@ -893,6 +927,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         startCalculationTime = -1;
                         playDelay = -1;
                         chirpHeard = false;
+                        bluetoothModel.setHeardChirp(false);
                         secondReceived = false;
 
                         /** Timed out handler
@@ -903,6 +938,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         defaultHandler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
+                                bluetoothModel.setHeardChirp(false);
                                 bluetoothMessageTimeReceived = -1;
                                 firstReceived = false;
                                 secondReceived = false;
@@ -911,7 +947,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 bluetoothModel.setElapsedCalculationTime(-1);
                                 bluetoothModel.setPlayDelay(-1);
                             }
-                        }, 400);
+                        }, bluetoothModel.windowSize);
                     }
                     break;
                 //write

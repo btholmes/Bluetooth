@@ -13,14 +13,41 @@ import android.widget.RadioGroup;
 
 public class BluetoothModel extends BaseObservable {
 
+    private String heard = "Found";
+    private String missed = "Not Found";
+
+    /**
+     * in ms
+     */
+    public static int windowSize = 750;
     /**
      * Default duration is 0.03 m/s
      */
     public static double duration = 0.03;
     public static double defaultTone = 8100.0;
-    public static int chirpDelay = 1000;
+    public static int chirpDelay = 1250;
     public static boolean chirpWindow = false;
+    public boolean heardChirp = false;
 
+    public void setHeardChirp(boolean heard){
+        this.heardChirp = heard;
+        notifyPropertyChanged(BR.heardChirp);
+    }
+
+    @Bindable
+    public String getHeard(){
+        return this.heard;
+    }
+
+    @Bindable
+    public String getMissed(){
+        return this.missed;
+    }
+
+    @Bindable
+    public boolean getHeardChirp(){
+        return this.heardChirp;
+    }
 
     public void setChirpWindow(boolean window){
         this.chirpWindow = window;
@@ -495,7 +522,7 @@ public class BluetoothModel extends BaseObservable {
     }
 
 
-    private boolean exactComparison = false;
+    private boolean exactComparison = true;
 
     public void setExactComparison(boolean exactComparison){
         this.exactComparison = exactComparison;
@@ -515,5 +542,21 @@ public class BluetoothModel extends BaseObservable {
     @Bindable
     public SwitchCompat.OnCheckedChangeListener getCheckedChangeListener(){
         return this.checkedChangeListener;
+    }
+
+
+    public static boolean usePhoneSpeaker = true;
+
+    private SwitchCompat.OnCheckedChangeListener phoneSpeakerListener = new SwitchCompat.OnCheckedChangeListener(){
+        @Override
+        public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+            usePhoneSpeaker = isChecked;
+        }
+    };
+
+
+    @Bindable
+    public SwitchCompat.OnCheckedChangeListener getPhoneSpeakerListener(){
+        return this.phoneSpeakerListener;
     }
 }
