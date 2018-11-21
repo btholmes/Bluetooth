@@ -2,6 +2,7 @@ apply plugin: 'com.android.application'
 
 android {
     compileSdkVersion 27
+    buildToolsVersion "28.0.3"
     defaultConfig {
         applicationId "design.senior.bluetooth"
         minSdkVersion 21
@@ -32,4 +33,5 @@ dependencies {
 
     implementation "android.arch.lifecycle:extensions:1.1.0"
     implementation "android.arch.lifecycle:viewmodel:1.1.0"
+    implementation 'com.google.guava:guava:26.0-android'
 }

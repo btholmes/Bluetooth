@@ -7,6 +7,10 @@
             name="data"
             type="design.senior.bluetooth.BluetoothModel">
         </variable>
+
+        <variable
+            name="presenter"
+            type="design.senior.bluetooth.Presenter"></variable>
     </data>
 
     <RelativeLayout
@@ -15,68 +19,310 @@
         tools:context=".MainActivity">
 
         <TextView
-            android:id="@+id/searchingText"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@{data.newSearch == true ? @color/red : @color/black}"
-            android:text="Searching..."
-            android:layout_centerInParent="true"
+            android:layout_alignParentRight="true"
+            android:layout_margin="15dp"
+            android:textSize="20sp"
+            android:textColor="@{data.isRunning == true ? @color/red : @color/green}"
+            android:textStyle="normal"
+            android:text="@{data.isRunning == true ? data.stopText : data.startText}"
+            android:onClick="@{(view) -> data.onServerPauseClick(view)}"
             />
 
         <LinearLayout
-            android:id="@+id/phone1"
-            android:layout_alignParentBottom="true"
+            android:id="@+id/calculation_times"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
             >
 
-
             <TextView
-                android:text="Phone1 (Samsung) : "
-                android:textStyle="bold"
-                android:layout_margin="10dp"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
-
-
-            <TextView
-                android:text="@{data.rSSI1}"
-                android:layout_margin="10dp"
+                android:text="@{data.elapsedCalculationTime}"
+                android:textStyle="normal"
+                android:textSize="20sp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
             <TextView
-                android:text="@{data.phone1Distance}"
-                android:layout_margin="10dp"
+                android:text="@{data.playDelay}"
+                android:textStyle="normal"
+                android:textSize="20sp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
         </LinearLayout>
 
         <LinearLayout
-            android:layout_above="@+id/phone1"
+            android:id="@+id/chirp_delay_holder"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
+            android:layout_above="@+id/duration_holder"
+            android:layout_centerInParent="true"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
             >
 
+            <EditText
+                android:layout_width="150dp"
+                android:layout_height="50dp"
+                android:layout_margin="15dp"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                android:text="@{data.chirpDelay}"
+                app:addTextChangedListener="@{data.chirpWatcher}"
+                />
 
             <TextView
-                android:text="Phone2 (Nexus) : "
-                android:textStyle="bold"
-                android:layout_margin="10dp"
+                android:text="chirp delay (ms)"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                />
+
+        </LinearLayout>
+
+
+        <LinearLayout
+            android:id="@+id/duration_holder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_above="@id/center_content"
+            android:layout_centerInParent="true"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
+            >
+
+            <EditText
+                android:layout_width="150dp"
+                android:layout_height="50dp"
+                android:layout_margin="15dp"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                android:text="@{data.duration}"
+                app:addTextChangedListener="@{data.durationWatcher}"
+                />
+
+            <TextView
+                android:text="duration (s)"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                />
+
+        </LinearLayout>
+
+
+
+        <LinearLayout
+            android:id="@+id/times_received"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_above="@id/center_content"
+            android:layout_centerInParent="true"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            >
+
+            <TextView
+                android:text="@{data.serverTimeHeard}"
+                android:textStyle="normal"
+                android:textSize="20sp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
-
             <TextView
-                android:text="@{data.rSSI2}"
-                android:layout_margin="10dp"
+                android:text="@{data.clientTimeHeard}"
+                android:textStyle="normal"
+                android:textSize="20sp"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
 
         </LinearLayout>
+
+
+        <LinearLayout
+            android:id="@+id/center_content"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_centerInParent="true"
+            >
+
+            <EditText
+                android:layout_width="150dp"
+                android:layout_height="50dp"
+                android:hint="Frequency"
+                android:text="@{data.defaultTone}"
+                app:addTextChangedListener="@{data.watcher}"
+                />
+
+            <TextView
+                android:text="hz"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:textStyle="normal"
+                />
+
+            <android.support.v7.widget.SwitchCompat
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginLeft="50dp"
+                android:checked="true"
+                app:setOnCheckedChangeListener="@{data.checkedChangeListener}"
+                />
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/verificationText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:layout_below="@id/center_content"
+            android:layout_margin="10dp"
+            android:textSize="20sp"
+            android:textStyle="normal"
+            android:textColor="@{data.heardChirp == true ? @color/green : @color/red}"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            android:text="@{data.heardChirp == true ? data.heard : data.missed}"
+            />
+
+
+        <TextView
+            android:id="@+id/searchingText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="20sp"
+            android:layout_below="@+id/verificationText"
+            android:textStyle="bold"
+            android:textColor="@{data.newSearch == true ? @color/red : @color/black}"
+            android:text="@{data.searchingText}"
+            android:layout_centerInParent="true"
+            />
+
+
+        <TextView
+            android:id="@+id/bluetooth_message"
+            android:layout_below="@+id/searchingText"
+            android:layout_centerInParent="true"
+            android:textSize="20sp"
+            android:textStyle="normal"
+            android:layout_width="wrap_content"
+            android:layout_margin="10dp"
+            android:layout_height="wrap_content"
+            android:text="@{data.bluetoothMessage ?? data.defaultMessage}"
+            />
+
+        <TextView
+            android:layout_below="@id/bluetooth_message"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="@{data.timeDilationDistance}"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            android:textStyle="normal"
+            android:textSize="20sp"
+            />
+
+        <android.support.v7.widget.SwitchCompat
+            android:id="@+id/phoneSpeakerSwitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@+id/bluetooth_message"
+            android:layout_centerInParent="true"
+            android:checked="true"
+            android:text="Use Phone Speaker"
+            android:textStyle="normal"
+            android:textSize="15sp"
+            android:layout_margin="10dp"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
+            app:setOnCheckedChangeListener="@{data.phoneSpeakerListener}"
+            />
+
+        <TextView
+            android:id="@+id/blinking_box"
+            android:layout_below="@+id/phoneSpeakerSwitch"
+            android:layout_centerInParent="true"
+            android:textStyle="normal"
+            android:textSize="20sp"
+            android:layout_width="150dp"
+            android:layout_height="50dp"
+            android:visibility="@{data.isMyPhone == true ? 8 : 0}"
+            android:background="@{data.chirpWindow == true ? @color/colorPrimary : @color/white}"
+
+            />
+
+        <LinearLayout
+            android:id="@+id/client_side_phone_rrsi_holder"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_alignParentBottom="true"
+            android:visibility="@{data.isMyPhone == true ? 0 : 8}"
+            >
+
+            <LinearLayout
+                android:layout_above="@+id/phone1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                >
+
+
+                <TextView
+                    android:text="Phone2 (Nexus) : "
+                    android:textStyle="bold"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+
+                <TextView
+                    android:text="@{data.rSSI2}"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/phone1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                >
+
+
+                <TextView
+                    android:text="Phone1 (Samsung) : "
+                    android:textStyle="bold"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+
+                <TextView
+                    android:text="@{data.rSSI1}"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+                <TextView
+                    android:text="@{data.phone1Distance}"
+                    android:layout_margin="10dp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
 
     </RelativeLayout>
 
